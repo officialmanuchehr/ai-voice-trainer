@@ -3,6 +3,7 @@ uvicorn[standard]>=0.32
 sqlalchemy>=2.0.35
 greenlet>=3.1
 aiosqlite>=0.20
+asyncpg>=0.29
 pydantic-settings>=2.5
 python-dotenv>=1.0
 python-multipart>=0.0.12

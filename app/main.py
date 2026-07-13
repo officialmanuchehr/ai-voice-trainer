@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import BasicAuthMiddleware
 from app.constants import STT_VOCABULARY
 from app.database import Base, SessionLocal, engine
 from app.models import ClaimCheck, Feedback, KnowledgeBase, Product, Scenario, Score
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Voice Trainer", lifespan=lifespan)
+app.add_middleware(BasicAuthMiddleware)
 
 
 @app.get("/")

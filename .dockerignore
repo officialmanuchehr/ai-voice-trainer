@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+.env.example
+.claude
+data
+tests
+README.md
+*.pyc
+__pycache__
