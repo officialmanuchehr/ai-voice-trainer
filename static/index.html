@@ -206,6 +206,30 @@ function addBubble(role, text) {
   div.textContent = text;
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+// Wraps fetch so every failure mode (network drop, proxy timeout returning
+// an HTML error page, 4xx/5xx JSON) surfaces as a thrown Error with a
+// readable message, instead of leaving callers to guess why res.json()
+// blew up or silently proceed on a non-ok response.
+async function fetchJson(url, options) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    throw new Error(`сеть недоступна (${err.message})`);
+  }
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // response body wasn't JSON — e.g. a proxy/timeout error page
+  }
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `HTTP ${res.status}`);
+  }
+  return data;
 }
 
 async function startSession() {
@@ -238,16 +262,17 @@ async function sendTurn() {
   const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
 
   try {
-    const res = await fetch(`/sessions/${sessionId}/turns`, {
+    const data = await fetchJson(`/sessions/${sessionId}/turns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    const data = await res.json();
     addBubble('ai_client', data.ai_client_text);
 
     audioPlayer.src = `/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`;
     audioPlayer.play().catch(() => {});
+  } catch (err) {
+    addBubble('system', 'Ошибка: ' + err.message);
   } finally {
     clearTimeout(timer);
     processingEl.classList.remove('show');
@@ -256,7 +281,7 @@ async function sendTurn() {
 }
 
 async function sendVoiceTurn(blob) {
-  addBubble('system', 'Распознаю речь…');
+  const placeholder = addBubble('system', 'Распознаю речь…');
   micBtn.disabled = true;
 
   const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
@@ -265,14 +290,16 @@ async function sendVoiceTurn(blob) {
   form.append('audio', blob, 'turn.webm');
 
   try {
-    const res = await fetch(`/sessions/${sessionId}/voice-turn`, { method: 'POST', body: form });
-    const data = await res.json();
-    chatEl.lastChild.remove(); // remove "Распознаю речь…" placeholder
+    const data = await fetchJson(`/sessions/${sessionId}/voice-turn`, { method: 'POST', body: form });
+    placeholder.remove();
     addBubble('manager', data.manager_text);
     addBubble('ai_client', data.ai_client_text);
 
     audioPlayer.src = `data:audio/mpeg;base64,${data.ai_client_audio_base64}`;
     audioPlayer.play().catch(() => {});
+  } catch (err) {
+    placeholder.remove();
+    addBubble('system', 'Ошибка: ' + err.message);
   } finally {
     clearTimeout(timer);
     processingEl.classList.remove('show');
@@ -317,18 +344,20 @@ async function finishSession() {
   finishBtn.disabled = true;
   sendBtn.disabled = true;
   micBtn.disabled = true;
+  processingEl.textContent = 'Оцениваю разговор (может занять до минуты, не закрывайте страницу)…';
   processingEl.classList.add('show');
   try {
-    const res = await fetch(`/sessions/${sessionId}/finish`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) {
-      resultEl.style.display = 'block';
-      resultEl.innerHTML = `<p>Ошибка оценки: ${esc(data.detail || res.status)}</p>`;
-      return;
-    }
+    const data = await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
     renderResult(data);
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<p>Ошибка оценки: ${esc(err.message)}</p>`;
+    finishBtn.disabled = false;
+    sendBtn.disabled = false;
+    micBtn.disabled = false;
   } finally {
     processingEl.classList.remove('show');
+    processingEl.textContent = 'Обрабатываю…';
   }
 }
 
