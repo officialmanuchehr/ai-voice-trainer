@@ -347,7 +347,14 @@ async function finishSession() {
   processingEl.textContent = 'Оцениваю разговор (может занять до минуты, не закрывайте страницу)…';
   processingEl.classList.add('show');
   try {
-    const data = await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
+    // Check current status first so a retry after a dropped connection resumes
+    // polling instead of re-POSTing /finish onto a scoring job already in flight.
+    let current = null;
+    try { current = await fetchJson(`/sessions/${sessionId}/score`); } catch { /* fall through to POST */ }
+    if (!current || current.status !== 'scoring') {
+      await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
+    }
+    const data = await pollScore();
     renderResult(data);
   } catch (err) {
     resultEl.style.display = 'block';
@@ -358,6 +365,30 @@ async function finishSession() {
   } finally {
     processingEl.classList.remove('show');
     processingEl.textContent = 'Обрабатываю…';
+  }
+}
+
+// Scoring runs in the background on the server (can take 60+ seconds), so the
+// result is fetched by polling rather than waiting on one long HTTP request —
+// that long a request is exactly what got killed by a mobile network mid-flight
+// in production. Each poll is fast; transient network blips just retry a few
+// times before giving up for good.
+async function pollScore() {
+  let networkRetries = 0;
+  while (true) {
+    let data;
+    try {
+      data = await fetchJson(`/sessions/${sessionId}/score`);
+      networkRetries = 0;
+    } catch (err) {
+      networkRetries += 1;
+      if (networkRetries > 5) throw err;
+      await new Promise((r) => setTimeout(r, 3000));
+      continue;
+    }
+    if (data.status === 'finished') return data;
+    if (data.status === 'finish_error') throw new Error(data.detail || 'оценка не удалась');
+    await new Promise((r) => setTimeout(r, 3000));
   }
 }
 

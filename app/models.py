@@ -66,6 +66,11 @@ class Session(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String, default="active")
+    # status transitions: active -> scoring -> finished | finish_error (finish_error can
+    # retry back to scoring). Scoring runs as a FastAPI BackgroundTask after /finish
+    # returns, since the two sequential Claude calls behind it can take over a minute —
+    # long enough that mobile networks/proxies kill an open request before it completes.
+    scoring_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TranscriptTurn(Base):

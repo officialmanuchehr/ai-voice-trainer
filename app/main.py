@@ -2,7 +2,7 @@ import base64
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -257,82 +257,149 @@ async def get_turn_audio(session_id: str, turn_index: int):
 
 
 @app.post("/sessions/{session_id}/finish")
-async def finish_session(session_id: str):
+async def finish_session(session_id: str, background_tasks: BackgroundTasks):
+    """Kicks off scoring and returns immediately; GET /sessions/{id}/score polls
+    for the result. Scoring runs as a FastAPI BackgroundTask (after the response
+    is sent) rather than inline, because the two sequential Claude calls behind
+    it can take 60+ seconds — long enough that mobile networks/proxies kill a
+    synchronous request before it completes (observed in production: client
+    closed the connection at 30s, losing a finished scoring result)."""
     async with SessionLocal() as db:
         session = await db.get(SessionModel, session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="session not found")
-        if session.status != "active":
+        if session.status not in ("active", "finish_error"):
             raise HTTPException(status_code=400, detail=f"session is not active (status={session.status})")
 
-        scenario = await db.get(Scenario, session.scenario_id)
-
-        kb = await db.scalar(
-            select(KnowledgeBase).where(
-                KnowledgeBase.product_id == scenario.product_id,
-                KnowledgeBase.version == session.kb_version,
-            )
+        turns_count = await db.scalar(
+            select(func.count()).select_from(TranscriptTurn).where(TranscriptTurn.session_id == session_id)
         )
-        if kb is None:
-            raise HTTPException(status_code=500, detail="knowledge base snapshot missing for session.kb_version")
-
-        turns_result = await db.execute(
-            select(TranscriptTurn).where(TranscriptTurn.session_id == session_id).order_by(TranscriptTurn.turn_index)
-        )
-        turns = turns_result.scalars().all()
-        if not turns:
+        if not turns_count:
             raise HTTPException(status_code=400, detail="session has no turns to score")
-        transcript = [{"turn_index": t.turn_index, "role": t.role, "text": t.text} for t in turns]
 
-        rubric = load_rubric(session.rubric_id)
+        session.status = "scoring"
+        session.scoring_error = None
+        await db.commit()
 
-        claim_checks = await scoring_provider.verify_claims(transcript, kb.data)
-        for claim in claim_checks:
+    background_tasks.add_task(_run_scoring, session_id)
+    return {"session_id": session_id, "status": "scoring"}
+
+
+async def _run_scoring(session_id: str) -> None:
+    async with SessionLocal() as db:
+        session = await db.get(SessionModel, session_id)
+        try:
+            scenario = await db.get(Scenario, session.scenario_id)
+
+            kb = await db.scalar(
+                select(KnowledgeBase).where(
+                    KnowledgeBase.product_id == scenario.product_id,
+                    KnowledgeBase.version == session.kb_version,
+                )
+            )
+            if kb is None:
+                raise RuntimeError("knowledge base snapshot missing for session.kb_version")
+
+            turns_result = await db.execute(
+                select(TranscriptTurn)
+                .where(TranscriptTurn.session_id == session_id)
+                .order_by(TranscriptTurn.turn_index)
+            )
+            turns = turns_result.scalars().all()
+            transcript = [{"turn_index": t.turn_index, "role": t.role, "text": t.text} for t in turns]
+
+            rubric = load_rubric(session.rubric_id)
+
+            claim_checks = await scoring_provider.verify_claims(transcript, kb.data)
+            for claim in claim_checks:
+                db.add(
+                    ClaimCheck(
+                        session_id=session_id,
+                        turn_index=claim.get("turn_index", 0),
+                        claim_text=claim.get("claim_text", ""),
+                        verdict=claim.get("verdict", "unapproved"),
+                        matched_entry_id=claim.get("matched_entry_id"),
+                        reason=claim.get("reason"),
+                    )
+                )
+
+            result = await scoring_provider.score(transcript, rubric, claim_checks)
+
             db.add(
-                ClaimCheck(
+                Score(
                     session_id=session_id,
-                    turn_index=claim.get("turn_index", 0),
-                    claim_text=claim.get("claim_text", ""),
-                    verdict=claim.get("verdict", "unapproved"),
-                    matched_entry_id=claim.get("matched_entry_id"),
-                    reason=claim.get("reason"),
+                    rubric_id=session.rubric_id,
+                    total=result["total"],
+                    breakdown=result["breakdown"],
+                    critical_errors=result.get("critical_errors", []),
                 )
             )
 
-        result = await scoring_provider.score(transcript, rubric, claim_checks)
-
-        db.add(
-            Score(
-                session_id=session_id,
-                rubric_id=session.rubric_id,
-                total=result["total"],
-                breakdown=result["breakdown"],
-                critical_errors=result.get("critical_errors", []),
+            feedback = result.get("feedback", {})
+            db.add(
+                Feedback(
+                    session_id=session_id,
+                    summary=feedback.get("summary", ""),
+                    strengths=feedback.get("strengths", []),
+                    growth_areas=feedback.get("growth_areas", []),
+                    better_examples=feedback.get("better_examples", []),
+                )
             )
-        )
 
-        feedback = result.get("feedback", {})
-        db.add(
-            Feedback(
-                session_id=session_id,
-                summary=feedback.get("summary", ""),
-                strengths=feedback.get("strengths", []),
-                growth_areas=feedback.get("growth_areas", []),
-                better_examples=feedback.get("better_examples", []),
-            )
-        )
+            session.status = "finished"
+            session.ended_at = datetime.now(timezone.utc)
+            await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            session = await db.get(SessionModel, session_id)
+            session.status = "finish_error"
+            session.scoring_error = str(exc)
+            await db.commit()
 
-        session.status = "finished"
-        session.ended_at = datetime.now(timezone.utc)
-        await db.commit()
+
+@app.get("/sessions/{session_id}/score")
+async def get_score(session_id: str):
+    async with SessionLocal() as db:
+        session = await db.get(SessionModel, session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="session not found")
+
+        if session.status == "scoring":
+            return {"session_id": session_id, "status": "scoring"}
+        if session.status == "finish_error":
+            return {"session_id": session_id, "status": "finish_error", "detail": session.scoring_error}
+        if session.status != "finished":
+            # e.g. "active" — scoring hasn't been started yet. Not an error: lets the
+            # frontend check current state before deciding whether to POST /finish.
+            return {"session_id": session_id, "status": session.status}
+
+        score = await db.scalar(select(Score).where(Score.session_id == session_id))
+        feedback = await db.scalar(select(Feedback).where(Feedback.session_id == session_id))
+        claims_result = await db.execute(select(ClaimCheck).where(ClaimCheck.session_id == session_id))
+        claim_checks = claims_result.scalars().all()
 
         return {
             "session_id": session_id,
+            "status": "finished",
             "kb_version": session.kb_version,
             "rubric_id": session.rubric_id,
-            "claim_checks": claim_checks,
-            "total": result["total"],
-            "breakdown": result["breakdown"],
-            "critical_errors": result.get("critical_errors", []),
-            "feedback": feedback,
+            "claim_checks": [
+                {
+                    "turn_index": c.turn_index,
+                    "claim_text": c.claim_text,
+                    "verdict": c.verdict,
+                    "matched_entry_id": c.matched_entry_id,
+                    "reason": c.reason,
+                }
+                for c in claim_checks
+            ],
+            "total": score.total,
+            "breakdown": score.breakdown,
+            "critical_errors": score.critical_errors,
+            "feedback": {
+                "summary": feedback.summary,
+                "strengths": feedback.strengths,
+                "growth_areas": feedback.growth_areas,
+                "better_examples": feedback.better_examples,
+            },
         }
