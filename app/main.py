@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import BasicAuthMiddleware
@@ -24,10 +24,22 @@ stt_provider = get_stt_provider()
 scoring_provider = get_scoring_provider()
 
 
+def _add_scoring_error_column(sync_conn) -> None:
+    """create_all only creates missing tables — it never alters a table that
+    already exists, so a new column on an existing model needs its own
+    additive migration here. Checked via the dialect-agnostic inspector rather
+    than "ADD COLUMN IF NOT EXISTS", which isn't supported on every SQLite
+    build (only on SQLite 3.35+, and syntax support varies by distro)."""
+    columns = {c["name"] for c in inspect(sync_conn).get_columns("sessions")}
+    if "scoring_error" not in columns:
+        sync_conn.execute(text("ALTER TABLE sessions ADD COLUMN scoring_error TEXT"))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_scoring_error_column)
 
     async with SessionLocal() as db:
         await load_seed(db)
