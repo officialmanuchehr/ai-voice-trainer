@@ -344,7 +344,7 @@ async function finishSession() {
   finishBtn.disabled = true;
   sendBtn.disabled = true;
   micBtn.disabled = true;
-  processingEl.textContent = 'Оцениваю разговор (может занять до минуты, не закрывайте страницу)…';
+  processingEl.textContent = 'Оцениваю разговор (может занять несколько минут, не закрывайте страницу)…';
   processingEl.classList.add('show');
   try {
     // Check current status first so a retry after a dropped connection resumes

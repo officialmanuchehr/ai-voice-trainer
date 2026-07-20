@@ -9,6 +9,7 @@ from app.providers.base import ScoringProvider
 
 MAX_ATTEMPTS = 3
 MODEL = "claude-sonnet-5"
+MAX_TOKENS = 16000
 CRITICAL_VERDICTS = {"unapproved", "forbidden"}
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
@@ -94,18 +95,21 @@ class ClaudeScoringProvider(ScoringProvider):
 
     async def _call(self, prompt: str, output_schema: dict | None = None) -> str:
         # Sonnet 5 runs adaptive thinking by default, and thinking tokens count
-        # against max_tokens — a low ceiling can exhaust the budget before any
-        # text block starts, especially on the full scoring prompt (12+ turns,
-        # full rubric). 8192 leaves headroom for both.
+        # against max_tokens — 8192 was too tight on the full scoring prompt
+        # (12+ turns, full rubric) and produced truncated, unparseable JSON in
+        # production. Streaming avoids the SDK's non-streaming timeout guard
+        # at this max_tokens size; scoring already runs off the request path
+        # (see main.py's background scoring job), so the extra time is free.
         kwargs: dict = {}
         if output_schema is not None:
             kwargs["output_config"] = {"format": {"type": "json_schema", "schema": output_schema}}
-        response = await self.client.messages.create(
+        async with self.client.messages.stream(
             model=MODEL,
-            max_tokens=8192,
+            max_tokens=MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
             **kwargs,
-        )
+        ) as stream:
+            response = await stream.get_final_message()
         return "".join(block.text for block in response.content if block.type == "text")
 
     async def verify_claims(self, transcript: list[dict], kb: dict) -> list[dict]:
