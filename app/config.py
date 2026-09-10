@@ -37,5 +37,11 @@ class Settings(BaseSettings):
     basic_auth_username: str = ""
     basic_auth_password: str = ""
 
+    # Run schema-create + seed load on app startup (lifespan). Fine for local
+    # dev and single-instance containers. Set false on serverless (Vercel),
+    # where many cold starts would race on CREATE TABLE / seed inserts — there
+    # you run scripts/init_db.py once instead.
+    auto_init_db: bool = True
+
 
 settings = Settings()

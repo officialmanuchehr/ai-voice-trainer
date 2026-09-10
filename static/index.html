@@ -354,6 +354,13 @@ async function finishSession() {
     if (!current || current.status !== 'scoring') {
       await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
     }
+    // Kick scoring off as fire-and-forget: it runs 60s+ on the server and we
+    // deliberately don't await it here — a long-held request is what mobile
+    // networks were killing. The server runs it to completion regardless of
+    // whether this fetch survives; we read the outcome by polling /score below.
+    // Safe to re-fire on a retry: the server ignores it if scoring is already
+    // in flight (and re-runs it only if a previous worker died mid-scoring).
+    fetch(`/sessions/${sessionId}/score-run`, { method: 'POST' }).catch(() => {});
     const data = await pollScore();
     renderResult(data);
   } catch (err) {

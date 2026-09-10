@@ -164,7 +164,18 @@ TTS_PROVIDER=stub|elevenlabs
 
 ## Оценка (Блок 3)
 
-`POST /sessions/{id}/finish` — два последовательных вызова Claude Sonnet 5:
+`POST /sessions/{id}/finish` переводит сессию в статус `scoring` и сразу
+отвечает. Саму оценку запускает отдельный вызов `POST /sessions/{id}/score-run`
+(фронтенд дёргает его fire-and-forget сразу после `/finish` и дальше опрашивает
+`GET /sessions/{id}/score`). Так каждый HTTP-запрос короткий — один длинный
+синхронный запрос мобильная сеть/прокси убивали на 30-й секунде. `score-run`
+атомарно «забирает» сессию через `sessions.scoring_started_at`: повторный вызов
+или ретрай после падения воркера не запускают оценку дважды, но протухший
+захват (> 10 мин) можно перезапустить. Раньше это был FastAPI BackgroundTask
+после ответа `/finish` — на serverless (Vercel) такой таск убивается сразу
+после отправки ответа, поэтому он вынесен в отдельный запрос.
+
+`score-run` — два последовательных вызова Claude Sonnet 5:
 
 1. **Claim-verification** (промпт B) — сверяет каждое продуктовое утверждение
    менеджера с `approved_facts`, `approved_arguments` и `approved_response`
@@ -219,19 +230,20 @@ self-consistency — сознательно отложены).
 
 `tests/run_gate_test.py` вместо этого пишет транскрипт фикстуры (обе роли,
 `manager` и `ai_client`) напрямую в `transcript_turns` через SQLAlchemy —
-DialogProvider не импортируется и не вызывается вообще. Затем скрипт
-дёргает только `POST /sessions/{id}/finish` по HTTP. Так тест детерминирован
-на входе и проверяет исключительно ScoringProvider.
+DialogProvider не импортируется и не вызывается вообще. Затем скрипт по HTTP
+дёргает `POST /sessions/{id}/finish` → `POST /sessions/{id}/score-run` и читает
+результат из `GET /sessions/{id}/score`. Так тест детерминирован на входе и
+проверяет исключительно ScoringProvider.
 
 ```bash
 python3 tests/run_gate_test.py tests/fixtures/dialogue_honest.json
 python3 tests/run_gate_test.py tests/fixtures/dialogue_misselling_500k.json
-# опционально: -o <путь> — куда сохранить полный JSON-результат /finish
+# опционально: -o <путь> — куда сохранить полный JSON-результат оценки
 ```
 
 Сервер (`uvicorn`) должен быть запущен — скрипт пишет в тот же SQLite-файл,
 что использует сервер (`DATABASE_URL` из `.env`), и обращается к нему по HTTP
-только за `/finish`.
+только за оценкой.
 
 ## Голос
 
@@ -317,3 +329,22 @@ ls -la data/
 401, с неверными — 401, с верными — 200, `/health` — 200 без креденшлов всегда.
 
 Пошаговая инструкция по Railway — в чате с ассистентом / у того, кто настраивал деплой.
+
+## Деплой на Vercel
+
+Файлы: `api/index.py` (ASGI-точка входа), `vercel.json`, `scripts/init_db.py`,
+`.vercelignore`. Пошаговая инструкция и список переменных окружения —
+`VERCEL_DEPLOY.md`.
+
+Ключевые отличия от Railway (serverless не держит процесс между запросами):
+
+- `AUTO_INIT_DB=false` — схему/сид на старте не создаём (десятки cold start
+  гонялись бы за `CREATE TABLE`). Вместо этого один раз запускаем
+  `python scripts/init_db.py` против прод-Postgres.
+- Обязателен внешний Postgres (SQLite-файла негде хранить). Строка подключения
+  — пулерная (`pgbouncer`/transaction mode); `app/database.py` для Postgres
+  ставит `NullPool` + `statement_cache_size=0`.
+- Оценка вынесена из BackgroundTask в отдельный запрос
+  `POST /sessions/{id}/score-run` (см. раздел «Оценка»).
+- Лимит `maxDuration` — 60 с на Hobby; полный прогон `claude`-оценки может не
+  уложиться. Для реального использования нужен Pro (`maxDuration: 300`).

@@ -1,14 +1,16 @@
 import base64
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import BasicAuthMiddleware
+from app.config import settings
 from app.constants import STT_VOCABULARY
 from app.database import Base, SessionLocal, engine
 from app.models import ClaimCheck, Feedback, KnowledgeBase, Product, Scenario, Score
@@ -23,27 +25,47 @@ tts_provider = get_tts_provider()
 stt_provider = get_stt_provider()
 scoring_provider = get_scoring_provider()
 
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
-def _add_scoring_error_column(sync_conn) -> None:
+# A session left in "scoring" with a claim timestamp older than this is assumed
+# to have a dead worker (serverless function timed out or crashed mid-run) and
+# may be re-claimed by a fresh POST /sessions/{id}/score-run.
+_SCORING_CLAIM_TTL = timedelta(minutes=10)
+
+
+def _add_missing_columns(sync_conn) -> None:
     """create_all only creates missing tables — it never alters a table that
     already exists, so a new column on an existing model needs its own
     additive migration here. Checked via the dialect-agnostic inspector rather
     than "ADD COLUMN IF NOT EXISTS", which isn't supported on every SQLite
     build (only on SQLite 3.35+, and syntax support varies by distro)."""
+    dialect = sync_conn.dialect.name
+    ts_type = "TIMESTAMP WITH TIME ZONE" if dialect == "postgresql" else "TIMESTAMP"
     columns = {c["name"] for c in inspect(sync_conn).get_columns("sessions")}
     if "scoring_error" not in columns:
         sync_conn.execute(text("ALTER TABLE sessions ADD COLUMN scoring_error TEXT"))
+    if "scoring_started_at" not in columns:
+        sync_conn.execute(text(f"ALTER TABLE sessions ADD COLUMN scoring_started_at {ts_type}"))
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def init_db() -> None:
+    """Create tables, apply additive column migrations, load seed data.
+    Idempotent. Runs from lifespan for local dev and single-instance containers;
+    on serverless (Vercel, settings.auto_init_db=false) run scripts/init_db.py
+    once after deploy instead — dozens of cold starts racing on CREATE TABLE /
+    seed inserts is not worth defending against per request."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_add_scoring_error_column)
+        await conn.run_sync(_add_missing_columns)
 
     async with SessionLocal() as db:
         await load_seed(db)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if settings.auto_init_db:
+        await init_db()
     yield
 
 
@@ -53,7 +75,7 @@ app.add_middleware(BasicAuthMiddleware)
 
 @app.get("/")
 async def index():
-    return FileResponse("static/index.html")
+    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @app.get("/health")
@@ -269,13 +291,14 @@ async def get_turn_audio(session_id: str, turn_index: int):
 
 
 @app.post("/sessions/{session_id}/finish")
-async def finish_session(session_id: str, background_tasks: BackgroundTasks):
-    """Kicks off scoring and returns immediately; GET /sessions/{id}/score polls
-    for the result. Scoring runs as a FastAPI BackgroundTask (after the response
-    is sent) rather than inline, because the two sequential Claude calls behind
-    it can take 60+ seconds — long enough that mobile networks/proxies kill a
-    synchronous request before it completes (observed in production: client
-    closed the connection at 30s, losing a finished scoring result)."""
+async def finish_session(session_id: str):
+    """Marks the session ready for scoring and returns immediately. The actual
+    scoring — two sequential Claude calls, 60s+ — is done by a separate call to
+    POST /sessions/{id}/score-run that the client fires without awaiting, then
+    polls GET /sessions/{id}/score for the result. Splitting it keeps every
+    request short: one long synchronous request is exactly what mobile
+    networks/proxies were killing in production (client closed at 30s, losing a
+    finished result)."""
     async with SessionLocal() as db:
         session = await db.get(SessionModel, session_id)
         if session is None:
@@ -291,10 +314,53 @@ async def finish_session(session_id: str, background_tasks: BackgroundTasks):
 
         session.status = "scoring"
         session.scoring_error = None
+        session.scoring_started_at = None
         await db.commit()
 
-    background_tasks.add_task(_run_scoring, session_id)
     return {"session_id": session_id, "status": "scoring"}
+
+
+@app.post("/sessions/{session_id}/score-run")
+async def score_run(session_id: str):
+    """Runs scoring synchronously (60s+) and returns the terminal status. The
+    client fires this once after /finish and does NOT wait on it — if the
+    connection drops, the server still runs to completion (neither Vercel's
+    serverless functions nor uvicorn cancel a handler on client disconnect),
+    and the client reads the outcome from GET /sessions/{id}/score polling.
+
+    Idempotent by design: the claiming UPDATE only matches a session that is
+    still "scoring" and either unclaimed or whose claim has gone stale (worker
+    died mid-run), so a duplicate call or a post-crash retry does the right
+    thing instead of scoring twice in parallel."""
+    now = datetime.now(timezone.utc)
+    stale_before = now - _SCORING_CLAIM_TTL
+    async with SessionLocal() as db:
+        result = await db.execute(
+            update(SessionModel)
+            .where(
+                SessionModel.id == session_id,
+                SessionModel.status == "scoring",
+                or_(
+                    SessionModel.scoring_started_at.is_(None),
+                    SessionModel.scoring_started_at < stale_before,
+                ),
+            )
+            .values(scoring_started_at=now)
+        )
+        await db.commit()
+        claimed = result.rowcount == 1
+
+        if not claimed:
+            session = await db.get(SessionModel, session_id)
+            if session is None:
+                raise HTTPException(status_code=404, detail="session not found")
+            return {"session_id": session_id, "status": session.status, "claimed": False}
+
+    await _run_scoring(session_id)
+
+    async with SessionLocal() as db:
+        session = await db.get(SessionModel, session_id)
+    return {"session_id": session_id, "status": session.status, "claimed": True}
 
 
 async def _run_scoring(session_id: str) -> None:

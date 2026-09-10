@@ -71,6 +71,11 @@ class Session(Base):
     # returns, since the two sequential Claude calls behind it can take over a minute —
     # long enough that mobile networks/proxies kill an open request before it completes.
     scoring_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set by POST /sessions/{id}/score-run when it claims this session for
+    # scoring. Lets a duplicate call or a post-crash retry tell "already being
+    # scored" (recent timestamp) from "worker died mid-run, safe to re-run"
+    # (timestamp older than _SCORING_CLAIM_TTL). NULL until first claimed.
+    scoring_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TranscriptTurn(Base):

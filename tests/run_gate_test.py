@@ -86,11 +86,20 @@ async def main() -> None:
     print(f"session seeded from fixture (no DialogProvider calls): {session_id}", flush=True)
     print(f"transcript turns written: {len(fixture['transcript'])}", flush=True)
 
-    print("calling /finish ...", flush=True)
-    async with httpx.AsyncClient(timeout=180) as client:
+    print("calling /finish + /score-run ...", flush=True)
+    async with httpx.AsyncClient(timeout=300) as client:
         resp = await client.post(f"{API_BASE}/sessions/{session_id}/finish")
         resp.raise_for_status()
+        # Scoring is a separate synchronous call now (see app/main.py): /finish
+        # only flips the session to "scoring". /score-run runs the Claude calls
+        # and returns when done; the full result is then read from /score.
+        resp = await client.post(f"{API_BASE}/sessions/{session_id}/score-run")
+        resp.raise_for_status()
+        resp = await client.get(f"{API_BASE}/sessions/{session_id}/score")
+        resp.raise_for_status()
         result = resp.json()
+        if result.get("status") == "finish_error":
+            raise SystemExit(f"scoring failed: {result.get('detail')}")
 
     print(f"total: {result['total']}", flush=True)
     print(f"critical_errors: {len(result.get('critical_errors', []))}", flush=True)
