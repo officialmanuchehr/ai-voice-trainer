@@ -1,5 +1,20 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# libpq/psycopg-style query params that platforms (Neon, Supabase, Heroku)
+# append to DATABASE_URL but asyncpg's connect() rejects as unknown kwargs.
+# SSL is re-established in app/database.py connect_args instead.
+_LIBPQ_ONLY_PARAMS = {
+    "sslmode",
+    "channel_binding",
+    "sslrootcert",
+    "sslcert",
+    "sslkey",
+    "gssencmode",
+    "options",
+}
 
 
 class Settings(BaseSettings):
@@ -19,18 +34,25 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
 
-    # Railway (and Heroku-style platforms) inject Postgres connection strings
-    # as "postgres://..." or "postgresql://...", which SQLAlchemy's async
-    # engine can't use directly — it needs a driver suffix. Normalizing here
-    # means the raw platform-provided DATABASE_URL can be pasted as-is.
+    # Railway / Neon / Supabase / Heroku inject Postgres connection strings as
+    # "postgres://..." or "postgresql://...", which SQLAlchemy's async engine
+    # can't use directly — it needs the "+asyncpg" driver suffix — and they
+    # tack on libpq-only query params (sslmode, channel_binding, ...) that
+    # asyncpg.connect() rejects. Normalising both here means the raw
+    # platform-provided DATABASE_URL can be pasted in as-is.
     @field_validator("database_url")
     @classmethod
     def _use_asyncpg_driver(cls, v: str) -> str:
-        if v.startswith("postgres://"):
-            return "postgresql+asyncpg://" + v[len("postgres://") :]
-        if v.startswith("postgresql://"):
-            return "postgresql+asyncpg://" + v[len("postgresql://") :]
-        return v
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                v = "postgresql+asyncpg://" + v[len(prefix) :]
+                break
+        else:
+            return v
+
+        parts = urlsplit(v)
+        kept = [(k, val) for k, val in parse_qsl(parts.query) if k not in _LIBPQ_ONLY_PARAMS]
+        return urlunsplit(parts._replace(query=urlencode(kept)))
 
     # Internal-tool access gate (HTTP Basic Auth, see app/auth.py). Leave both
     # empty for local dev (auth disabled); MUST be set in Railway.

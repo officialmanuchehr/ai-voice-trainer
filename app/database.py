@@ -16,10 +16,16 @@ def _engine_kwargs() -> dict:
     opens a connection per checkout and closes it on release. statement_cache_size=0
     keeps asyncpg working through a transaction-mode pooler (PgBouncer, Neon's
     pooled endpoint, Supabase's :6543), which can't keep server-side prepared
-    statements across checkouts. SQLite (local dev) keeps SQLAlchemy's defaults."""
+    statements across checkouts. ssl="require" restores the encrypted connection
+    that the stripped sslmode=require query param used to ask for (managed
+    Postgres — Neon, Supabase — refuses plaintext). SQLite (local dev) keeps
+    SQLAlchemy's defaults."""
     url = settings.database_url
     if url.startswith("postgresql+asyncpg://"):
-        return {"poolclass": NullPool, "connect_args": {"statement_cache_size": 0}}
+        return {
+            "poolclass": NullPool,
+            "connect_args": {"statement_cache_size": 0, "ssl": "require"},
+        }
     return {}
 
 
