@@ -15,16 +15,25 @@ pieces that make that work:
 
 - Vercel project **`officialmanuchehr-9511s-projects/ai-voice-trainer`**, linked
   to this GitHub repo. Production alias: `https://ai-voice-trainer-weld.vercel.app`.
-- All env vars set for production/preview/development **except `DATABASE_URL`**:
-  `AUTO_INIT_DB=false`, `BASIC_AUTH_USERNAME`/`BASIC_AUTH_PASSWORD` (generated),
-  and the four providers + keys mirrored from local `.env`
-  (`deepgram`/`deepseek`/`claude`/`elevenlabs`).
-- `GET /health` → 200, `GET /` → 401 then 200 with Basic Auth. Any DB-backed
-  route 500s until step 1 below is done.
-
-**Remaining: steps 1 and 4** (provision Postgres, then run `init_db.py`). Step 1
-needs a one-time browser click — accepting a storage provider's marketplace
-terms — which is why it wasn't automated.
+- **Neon Postgres** `neon-blue-envelope` provisioned via the Vercel marketplace
+  integration and connected — it set `DATABASE_URL` (+ `POSTGRES_*`, `PG*`) on
+  all environments. Schema created and seed loaded (`scripts/init_db.py`).
+- Other env vars (production/preview/development): `AUTO_INIT_DB=false`,
+  `BASIC_AUTH_USERNAME`/`BASIC_AUTH_PASSWORD` (generated), and the four
+  providers + keys mirrored from local `.env` (`deepgram`/`deepseek`/`claude`/
+  `elevenlabs`).
+- **Verified live:** `/health`, `/scenarios`, `/products`, create session, text
+  turn (real DeepSeek), `/finish` → `scoring`, `/score-run` claim + `/score`
+  polling — all working end to end.
+- **Known bad:** the `ANTHROPIC_API_KEY` copied from `.env` is rejected by the
+  API (401 `API key is invalid`), so the scoring step fails with
+  `finish_error`. Set a valid key:
+  ```
+  printf '%s' 'sk-ant-...' | vercel env add ANTHROPIC_API_KEY production
+  # repeat for preview, development, then: vercel --prod --archive=tgz
+  ```
+  (Deepgram / ElevenLabs keys are unverified — they only matter for the voice
+  path, not text.)
 
 ## 1. Provision a Postgres database
 
