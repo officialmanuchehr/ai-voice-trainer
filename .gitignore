@@ -6,3 +6,4 @@ data/*.db
 .claude/
 .DS_Store
 .vercel
+.env*
