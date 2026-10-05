@@ -82,6 +82,16 @@ async function criteriaNames() {
 
 function scoreClass(total) { return total <= 60 ? 'low' : 'high'; }
 
+// Shown only when the 60-point cap actually lowered the score; lists what triggered it.
+function capNote(cap) {
+  if (!cap) return '';
+  const verdicts = { unapproved: 'нет в базе знаний', forbidden: 'запрещено' };
+  const items = cap.triggers.map((t) => t.kind === 'claim'
+    ? `<li>Утверждение (${esc(verdicts[t.verdict] || t.verdict)}), реплика ${esc(t.turn_index)}: «${esc(t.claim_text)}»</li>`
+    : `<li>Критичная ошибка: ${esc(t.type)}</li>`).join('');
+  return `<div class="critical-box">Итог ограничен ${esc(cap.limit)} баллами (без ограничения было бы ${esc(cap.calculated_total)}), потому что:<ul class="plain">${items}</ul></div>`;
+}
+
 async function renderResult(el, data, { onDispute } = {}) {
   const names = await criteriaNames();
   const claims = (data.claim_checks || []).map((c) => `
@@ -107,7 +117,7 @@ async function renderResult(el, data, { onDispute } = {}) {
     <div class="row"><h2 style="margin:0">Результат</h2><span class="spacer"></span>
       <span class="muted small">сценарий v${esc(data.scenario_version)} · база знаний v${esc(data.kb_version)}</span></div>
     <div class="score-total ${scoreClass(data.total)}">${esc(data.total)} / 100</div>
-    ${(data.critical_errors || []).length ? '<p class="small">Есть критичная ошибка — итог ограничен 60 баллами.</p>' : ''}
+    ${capNote(data.cap_reason)}
     <h3>Резюме</h3><p>${esc(fb.summary)}</p>
     ${fb.next_skill ? `<p><strong>Что тренировать дальше:</strong> ${esc(fb.next_skill)}</p>` : ''}
     <div class="grid"><div><h3>Сильные стороны</h3>${list(fb.strengths)}</div><div><h3>Зоны роста</h3>${list(fb.growth_areas)}</div></div>

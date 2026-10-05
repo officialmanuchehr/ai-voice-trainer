@@ -1,12 +1,22 @@
 """Versioned content (scenarios, knowledge base): lookups, validation and the
 draft -> approved -> published -> archived lifecycle (PRD §12–13)."""
 
+from dataclasses import dataclass
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import KnowledgeBase, Scenario, ScenarioVersion
+from app.models import KnowledgeBase, Scenario, ScenarioVersion, User
 from app.models import Session as SessionModel
+from app.security import (
+    KB_APPROVE_ROLES,
+    KB_EDIT_ROLES,
+    KB_PUBLISH_ROLES,
+    SCENARIO_APPROVE_ROLES,
+    SCENARIO_EDIT_ROLES,
+    SCENARIO_PUBLISH_ROLES,
+)
 from app.seed_loader import list_rubrics
 
 DIFFICULTIES = ("easy", "medium", "hard")
@@ -35,17 +45,73 @@ _TRANSITIONS = {
 }
 
 
-def check_transition(current: str, target: str, role: str, edit_roles: set, approve_roles: set, publish_roles: set) -> None:
+@dataclass(frozen=True)
+class TransitionDecision:
+    allowed: bool
+    status_code: int | None = None
+    detail: str | None = None
+
+
+def _roles_for(version: ScenarioVersion | KnowledgeBase) -> tuple[set, set, set]:
+    if isinstance(version, ScenarioVersion):
+        return SCENARIO_EDIT_ROLES, SCENARIO_APPROVE_ROLES, SCENARIO_PUBLISH_ROLES
+    if isinstance(version, KnowledgeBase):
+        return KB_EDIT_ROLES, KB_APPROVE_ROLES, KB_PUBLISH_ROLES
+    raise TypeError(f"no approval policy for {type(version).__name__}")
+
+
+def can_transition(user: User, version: ScenarioVersion | KnowledgeBase, target: str) -> TransitionDecision:
+    """The single approval policy point for scenario and KB lifecycle changes.
+
+    Today it encodes only the lifecycle graph and the role sets from
+    app/security.py. `version.author` and `version.approved_by` are available
+    here deliberately: rules that depend on who wrote or approved a version
+    (e.g. "the approver must not be the author") belong in this function once
+    the bank confirms them (PILOT_READINESS_PLAN.md, B-1/B-2) — not in the
+    endpoints."""
+    edit_roles, approve_roles, publish_roles = _roles_for(version)
+    current = version.status
     if target not in _TRANSITIONS.get(current, set()):
-        raise HTTPException(status_code=400, detail=f"переход {current} → {target} недопустим")
+        return TransitionDecision(False, 400, f"переход {current} → {target} недопустим")
     allowed = {
         "approved": approve_roles,
         "draft": edit_roles | approve_roles,
         "published": publish_roles,
         "archived": publish_roles,
     }[target]
-    if role not in allowed:
-        raise HTTPException(status_code=403, detail=f"роль не может переводить в статус {target}")
+    if user.role not in allowed:
+        return TransitionDecision(False, 403, f"роль не может переводить в статус {target}")
+    return TransitionDecision(True)
+
+
+def require_transition(user: User, version: ScenarioVersion | KnowledgeBase, target: str) -> None:
+    decision = can_transition(user, version, target)
+    if not decision.allowed:
+        raise HTTPException(status_code=decision.status_code, detail=decision.detail)
+
+
+# KB sections whose entries may carry `needs_review: true` (developer
+# placeholders the product team has not confirmed yet).
+_REVIEWABLE_KB_SECTIONS = ("approved_facts", "approved_arguments", "objections", "disclaimers")
+
+
+def kb_review_blockers(data: dict) -> list[dict]:
+    """Content that is not yet bank-confirmed: every entry flagged
+    `needs_review`, plus a top-level `draft_note`. A KB version with any of
+    these must not become approved or published product truth."""
+    blockers = []
+    if data.get("draft_note"):
+        blockers.append({"section": "draft_note"})
+    for section in _REVIEWABLE_KB_SECTIONS:
+        for entry in data.get(section) or []:
+            if isinstance(entry, dict) and entry.get("needs_review"):
+                blockers.append({"section": section, "id": entry.get("id")})
+    return blockers
+
+
+def kb_review_message(prefix: str, blockers: list[dict]) -> str:
+    items = [b.get("id") or b["section"] for b in blockers]
+    return f"{prefix}: не проверено {len(blockers)} — {', '.join(items)}. Снимите needs_review и draft_note после проверки продуктовой командой."
 
 
 async def published_kb(db: AsyncSession, product_id: str) -> KnowledgeBase | None:

@@ -28,7 +28,7 @@ from app.providers.factory import get_dialog_provider, get_scoring_provider, get
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import dashboard as dashboard_router
-from app.scoring_math import finalize
+from app.scoring_math import cap_reason, effective_weights, finalize
 from app.security import CONTENT_VIEW_ROLES, TRAINEE_ROLES, get_current_user, require_roles
 from app.seed_loader import list_rubrics, load_rubric, load_seed
 
@@ -628,6 +628,16 @@ async def get_score(session_id: str, user: User = Depends(get_current_user)):
         claims_result = await db.execute(select(ClaimCheck).where(ClaimCheck.session_id == session_id))
         claim_checks = claims_result.scalars().all()
 
+        # Same inputs finalize() used when scoring: the rubric plus the bound
+        # scenario version's weight overrides.
+        content, _ = await session_content(db, session)
+        weights = effective_weights(load_rubric(session.rubric_id), (content.get("config") or {}).get("criteria_weights"))
+        cap = cap_reason(
+            {"breakdown": score.breakdown, "critical_errors": score.critical_errors},
+            [{"verdict": c.verdict, "claim_text": c.claim_text, "turn_index": c.turn_index, "reason": c.reason} for c in claim_checks],
+            weights,
+        )
+
         return {
             "session_id": session_id,
             "status": "finished",
@@ -646,6 +656,7 @@ async def get_score(session_id: str, user: User = Depends(get_current_user)):
                 for c in claim_checks
             ],
             "total": score.total,
+            "cap_reason": cap,
             "breakdown": score.breakdown,
             "critical_errors": score.critical_errors,
             "feedback": {

@@ -10,11 +10,21 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.audit import audit
-from app.content import DIFFICULTIES, TOPICS, check_transition, published_kb, validate_kb_content, validate_scenario_content
+from app.content import (
+    DIFFICULTIES,
+    TOPICS,
+    kb_review_blockers,
+    kb_review_message,
+    published_kb,
+    require_transition,
+    validate_kb_content,
+    validate_scenario_content,
+)
 from app.database import SessionLocal
 from app.models import CONTENT_STATUSES, AuditLog, KnowledgeBase, Product, Scenario, ScenarioVersion, Team, User
 from app.security import (
@@ -196,18 +206,30 @@ class StatusBody(BaseModel):
     status: str
 
 
+def _review_conflict(code: str, detail: str, blockers: list[dict]) -> JSONResponse:
+    """409 for content that still holds unreviewed placeholders. Returned
+    before any change is made, so the version keeps its current status."""
+    return JSONResponse(status_code=409, content={"detail": detail, "code": code, "unreviewed": blockers})
+
+
 @router.post("/scenarios/{scenario_id}/versions/{version}/status")
 async def set_scenario_status(scenario_id: str, version: int, body: StatusBody, user: User = Depends(_content_viewer)):
     async with SessionLocal() as db:
         scenario = await db.get(Scenario, scenario_id)
         v = await _scenario_version(db, scenario_id, version)
         previous = v.status
-        check_transition(
-            previous, body.status, user.role, SCENARIO_EDIT_ROLES, SCENARIO_APPROVE_ROLES, SCENARIO_PUBLISH_ROLES
-        )
+        require_transition(user, v, body.status)
         if body.status == "published":
-            if await published_kb(db, v.data["product_id"]) is None:
+            kb = await published_kb(db, v.data["product_id"])
+            if kb is None:
                 raise HTTPException(status_code=409, detail="сначала опубликуйте базу знаний этого продукта")
+            blockers = kb_review_blockers(kb.data)
+            if blockers:
+                return _review_conflict(
+                    "kb_not_clean",
+                    kb_review_message(f"Опубликованная база знаний продукта (v{kb.version}) не проверена", blockers),
+                    blockers,
+                )
             others = await db.execute(
                 select(ScenarioVersion).where(
                     ScenarioVersion.scenario_id == scenario_id,
@@ -341,7 +363,13 @@ async def set_kb_status(product_id: str, version: str, body: StatusBody, user: U
     async with SessionLocal() as db:
         kb = await _kb_version(db, product_id, version)
         previous = kb.status
-        check_transition(previous, body.status, user.role, KB_EDIT_ROLES, KB_APPROVE_ROLES, KB_PUBLISH_ROLES)
+        require_transition(user, kb, body.status)
+        if body.status in ("approved", "published"):
+            blockers = kb_review_blockers(kb.data)
+            if blockers:
+                return _review_conflict(
+                    "kb_unreviewed", kb_review_message("Эту версию базы знаний нельзя утвердить или опубликовать", blockers), blockers
+                )
         if body.status == "published":
             others = await db.execute(
                 select(KnowledgeBase).where(
