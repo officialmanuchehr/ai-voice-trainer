@@ -28,7 +28,7 @@ from app.providers.factory import get_dialog_provider, get_scoring_provider, get
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import dashboard as dashboard_router
-from app.scoring_math import cap_reason, effective_weights, finalize
+from app.scoring_math import cap_reason, effective_weights, fail_closed_verdict, finalize
 from app.security import CONTENT_VIEW_ROLES, TRAINEE_ROLES, get_current_user, require_roles
 from app.seed_loader import list_rubrics, load_rubric, load_seed
 
@@ -148,8 +148,15 @@ async def health():
 
 @app.get("/products")
 async def list_products(user: User = Depends(get_current_user)):
+    """Content roles see every product. Everyone else sees only products with
+    a published knowledge base: a draft-only product's name and segment are
+    unapproved KB content, and even its existence isn't shown."""
     async with SessionLocal() as db:
-        result = await db.execute(select(Product))
+        query = select(Product)
+        if user.role not in CONTENT_VIEW_ROLES:
+            published = select(KnowledgeBase.product_id).where(KnowledgeBase.status == "published")
+            query = query.where(Product.id.in_(published))
+        result = await db.execute(query)
         products = result.scalars().all()
         return [{"id": p.id, "name": p.name, "segment": p.segment} for p in products]
 
@@ -546,13 +553,16 @@ async def _run_scoring(session_id: str) -> None:
             }
 
             claim_checks = await scoring_provider.verify_claims(transcript, kb.data)
+            # Safety boundary independent of the provider: an unrecognised
+            # verdict is stored and scored as "unapproved", never as safe.
+            claim_checks = [{**claim, "verdict": fail_closed_verdict(claim.get("verdict"))} for claim in claim_checks]
             for claim in claim_checks:
                 db.add(
                     ClaimCheck(
                         session_id=session_id,
                         turn_index=claim.get("turn_index", 0),
                         claim_text=claim.get("claim_text", ""),
-                        verdict=claim.get("verdict", "unapproved"),
+                        verdict=claim["verdict"],
                         matched_entry_id=claim.get("matched_entry_id"),
                         reason=claim.get("reason"),
                     )

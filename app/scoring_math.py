@@ -9,6 +9,39 @@ re-interpret anchors or do arithmetic.
 
 CRITICAL_VERDICTS = {"unapproved", "forbidden"}
 CRITICAL_CAP = 60
+VERDICTS = ("approved", "unapproved", "forbidden")
+
+
+def canonical_verdict(verdict) -> str | None:
+    """The canonical form of a claim verdict (trimmed, lower-cased), or None
+    if it is not one of VERDICTS. Used by providers to reject bad output."""
+    value = str(verdict or "").strip().lower()
+    return value if value in VERDICTS else None
+
+
+def fail_closed_verdict(verdict) -> str:
+    """Backend safety boundary: anything that is not a recognisable verdict is
+    treated as "unapproved", so an unexpected model string can never turn a
+    product claim into a safe one."""
+    return canonical_verdict(verdict) or "unapproved"
+
+
+def breakdown_problems(breakdown: list, rubric: dict) -> list[str]:
+    """Why an evaluator breakdown doesn't match the rubric: every criterion
+    exactly once, nothing else. Empty list = valid."""
+    expected = [c["id"] for c in rubric.get("criteria", [])]
+    ids = [item.get("criterion_id") if isinstance(item, dict) else None for item in breakdown or []]
+    problems = []
+    duplicates = sorted({i for i in ids if ids.count(i) > 1 and i is not None})
+    unknown = [i for i in ids if i not in expected]
+    missing = [c for c in expected if c not in ids]
+    if duplicates:
+        problems.append(f"duplicate criteria: {duplicates}")
+    if unknown:
+        problems.append(f"unknown criteria: {unknown}")
+    if missing:
+        problems.append(f"missing criteria: {missing}")
+    return problems
 
 
 def effective_weights(rubric: dict, overrides: dict | None) -> dict[str, int]:
@@ -28,11 +61,16 @@ def compute_total(breakdown: list[dict], weights: dict[str, int], critical: bool
     if total_weight <= 0:
         return 0
     points = 0.0
+    # Each criterion counts once: the first usable entry wins, later
+    # duplicates are ignored (malformed evaluator output must not inflate).
+    counted = set()
     for item in breakdown:
-        weight = weights.get(item.get("criterion_id"), 0)
+        criterion_id = item.get("criterion_id")
+        weight = weights.get(criterion_id, 0)
         maximum = int(item.get("max") or 0)
-        if weight <= 0 or maximum <= 0:
+        if weight <= 0 or maximum <= 0 or criterion_id in counted:
             continue
+        counted.add(criterion_id)
         score = min(max(int(item.get("score", 0)), 0), maximum)
         points += score / maximum * weight
     total = round(points * 100 / total_weight)
