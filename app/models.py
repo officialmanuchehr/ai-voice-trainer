@@ -59,6 +59,18 @@ class AuditLog(Base):
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class LoginAttempt(Base):
+    """One failed login, for throttling (app/login_guard.py). Holds no
+    username, IP or password — only an HMAC of (normalised username, client
+    IP) — and rows older than the throttle window are purged."""
+
+    __tablename__ = "login_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key_hash: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
 class Product(Base):
     __tablename__ = "products"
 

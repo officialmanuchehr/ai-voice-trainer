@@ -81,5 +81,25 @@ class Settings(BaseSettings):
     seed_demo_users: bool = False
     demo_users_password: str = "demo12345"
 
+    # Login throttling: after this many failed logins for the same username
+    # from the same client IP within the window, further attempts get 429.
+    login_max_failures: int = 5
+    login_window_minutes: int = 15
+
+    # Request header holding the real client IP, set by a trusted proxy that
+    # overwrites any client-supplied value. On Vercel: "x-real-ip" (Vercel
+    # overwrites x-forwarded-for/x-real-ip to prevent spoofing). Empty = use
+    # the direct TCP peer address; never set this behind a proxy that passes
+    # client-supplied headers through.
+    client_ip_header: str = ""
+
+    # /docs, /redoc, /openapi.json. Unset = on for local SQLite development,
+    # off everywhere else (production); set API_DOCS=true/false to force.
+    api_docs: bool | None = None
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        return self.api_docs if self.api_docs is not None else self.database_url.startswith("sqlite")
+
 
 settings = Settings()

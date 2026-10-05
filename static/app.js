@@ -42,6 +42,8 @@ async function api(url, options = {}) {
     if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join('; ');
     // Unexpected server failures carry no safe detail; never show raw HTTP text.
     if (!detail) detail = res.status >= 500 ? 'Сервис временно недоступен. Попробуйте ещё раз.' : `Ошибка запроса (${res.status})`;
+    // Server errors carry a request id that support can find in the server log.
+    if (res.status >= 500 && data && data.request_id) detail += ` (код запроса: ${data.request_id})`;
     // `code` and the rest of the body (e.g. manager_text) let pages recover.
     throw Object.assign(new Error(detail), { status: res.status, code: data && data.code, data });
   }

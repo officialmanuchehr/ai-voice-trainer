@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -21,10 +22,12 @@ from app.config import settings
 from app.constants import STT_VOCABULARY
 from app.content import published_kb, session_content, topic_list
 from app.database import Base, SessionLocal, engine
+from app.http_security import RequestContextMiddleware, request_id_var, security_headers
 from app.models import ClaimCheck, Feedback, KnowledgeBase, Product, Scenario, ScenarioVersion, Score, User
 from app.models import Session as SessionModel
 from app.models import TranscriptTurn
 from app.prompts import build_client_system_prompt
+from app.redact import RedactingFilter, redact
 from app.providers.factory import get_dialog_provider, get_scoring_provider, get_stt_provider, get_tts_provider
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
@@ -51,6 +54,7 @@ _SCORING_CLAIM_TTL = timedelta(minutes=10)
 _SCORING_BUDGET_SECONDS = 270
 
 logger = logging.getLogger("app")
+logger.addFilter(RedactingFilter())
 
 # Client-facing text for each external-service failure. The provider's own
 # error (status, body, traceback) goes to the server log only — never to the
@@ -78,7 +82,7 @@ async def _call_service(code: str, call):
     try:
         return await call
     except Exception:
-        logger.exception("external service failed (%s)", code)
+        logger.exception("external service failed (%s) [request_id=%s]", code, request_id_var.get())
         raise ServiceUnavailable(code) from None
 
 
@@ -150,14 +154,62 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI Voice Trainer", lifespan=lifespan)
+# Docs routes are registered below and only answer when settings.api_docs_enabled.
+app = FastAPI(title="AI Voice Trainer", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.exception_handler(ServiceUnavailable)
 async def _service_unavailable(request, exc: ServiceUnavailable):
-    return JSONResponse(status_code=502, content={"code": exc.code, "detail": SERVICE_MESSAGES[exc.code], **exc.extra})
+    return JSONResponse(
+        status_code=502,
+        content={"code": exc.code, "detail": SERVICE_MESSAGES[exc.code], **exc.extra, "request_id": request_id_var.get()},
+    )
+
+
+@app.exception_handler(Exception)
+async def _unexpected_error(request, exc: Exception):
+    """Anything not handled more specifically: a generic message and the
+    request id; the exception itself goes to the (redacted) server log only.
+    Runs outside the middleware stack, so it sets its own headers."""
+    request_id = request_id_var.get()
+    logger.exception("unhandled error on %s %s [request_id=%s]", request.method, request.url.path, request_id)
+    return JSONResponse(
+        status_code=500,
+        headers={**security_headers(request.url.path), "X-Request-ID": request_id},
+        content={
+            "code": "internal_error",
+            "detail": "Внутренняя ошибка сервера. Попробуйте ещё раз; если ошибка повторится, сообщите код запроса.",
+            "request_id": request_id,
+        },
+    )
+
+
+def _docs_or_404():
+    if not settings.api_docs_enabled:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_schema():
+    _docs_or_404()
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_docs():
+    _docs_or_404()
+    return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{app.title} — API")
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_docs():
+    _docs_or_404()
+    return get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} — API")
 
 app.add_middleware(BasicAuthMiddleware)
+# Added last = outermost: every response (incl. Basic Auth 401s) gets the
+# request id and security headers.
+app.add_middleware(RequestContextMiddleware)
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
@@ -666,11 +718,15 @@ async def _run_scoring(session_id: str) -> None:
             )
             await db.commit()
         except Exception as exc:
-            logger.exception("external service failed (scoring_unavailable) for session %s", session_id)
+            logger.exception(
+                "external service failed (scoring_unavailable) for session %s [request_id=%s]", session_id, request_id_var.get()
+            )
             await db.rollback()
             session = await db.get(SessionModel, session_id)
             session.status = "finish_error"
-            session.scoring_error = str(exc)  # server-side diagnostics; never returned to clients
+            # Server-side diagnostics only (never returned to clients), and
+            # redacted: provider exceptions can echo request details.
+            session.scoring_error = redact(str(exc))
             await db.commit()
 
 

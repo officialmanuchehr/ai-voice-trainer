@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -31,7 +31,7 @@
 | **A0-3** ✅ | **Transcript ↔ screen consistency on provider failure.** Today a failed text turn leaves the manager's bubble on screen although it was rolled back. A voice turn that fails at TTS has already committed both turns, which the UI never shows, so a retry duplicates them. Rule: the screen must always equal the stored transcript. | P1-1 | M |
 | **A0-4** ✅ | **No raw provider or exception text shown to users.** `finish_error` stores `str(exc)` and `/score` returns it to the manager. Provider HTTP errors become unhandled 500s. Map them to stable error codes plus Russian messages; keep the technical detail in server logs only. | P1-1, Security §6.9 | S |
 | **A0-5** ✅ | **The score cap is always explained.** When the cap is triggered by a claim verdict without a matching `critical_errors` entry, return an explicit `cap_reason` (which claims triggered it) and render it. | P1-2 | S |
-| **A0-6** | **Login throttling plus failed-login audit.** Must ship before Basic Auth is removed (production is internet-exposed). | P1-10 | S |
+| **A0-6** ✅ | **Login throttling plus failed-login audit.** Must ship before Basic Auth is removed (production is internet-exposed). | P1-10 | S |
 
 **Prepare the four-eyes architecture (no behaviour change):**
 - Move all approval decisions into one policy function, `content.can_transition(user, version, target)`.
@@ -54,7 +54,7 @@ This is tracked as **A1-0** (S).
 | A1-6 | Approvals queue (pending scenario and KB versions) for approver roles; KB → dependent scenarios view; warning and confirmation before archiving a KB that live scenarios use | P1-7 | M |
 | A1-7 | Structured editors for KB, scenario, client profile and scoring config, with advanced JSON view kept (§7) | P1-8 | L |
 | A1-8 | Admin: user search/filter, teams (lead, rename, deactivate, stats), confirmation dialogs | P1-9 | M |
-| A1-9 | Hide `/docs`, `/redoc` and `/openapi.json` in production; security headers (CSP, frame-ancestors, Referrer-Policy, X-Content-Type-Options) | P2-1, P2-2 | S |
+| A1-9 ✅ | Hide `/docs`, `/redoc` and `/openapi.json` in production; security headers (CSP, frame-ancestors, Referrer-Policy, X-Content-Type-Options) | P2-1, P2-2 | S |
 | A1-10 | Lead workspace: sortable/filterable team table; separate Team and Performance views | P2-15, §11 | M |
 | A1-11 | Training and catalogue duration hint (approximate minutes per difficulty, configurable per scenario, not invented per product) | §7 | S |
 | A1-12 | End-to-end voice-turn latency: measure STT, LLM and TTS separately and show them on the dashboard | P2-8 | S |
