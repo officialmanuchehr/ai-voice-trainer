@@ -130,6 +130,10 @@ KNOWN_SAFE = {
     "Math.max(0, Math.min(100, v / max * 100))",
     "L", "L - 6", "W - R", "y(v)", "y(v) + 4", "x(i)", "H - 8", "y(p.avg_score)", "x(i) - 18", "T",
     "H - T - B", "W", "H", "y(60)", "y(60) - 4", "path",
+    # Phase 5A result renderer: CSS classes from code constants and numbers.
+    "scoreClass(total)",                 # 'low' | 'high'
+    "Number(total) || 0", "pct",         # numbers computed in code
+    "VERDICTS[g.verdict].badge",         # constant map in app.js
 }
 SAFE_WRAPPERS = ("esc(", "encodeURIComponent(", "fmtDate(")
 

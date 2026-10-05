@@ -32,7 +32,7 @@
         <section id="catalog-view" class="stack">
           <div class="panel">
             <div class="section-head">
-              <h2>Сценарии</h2><span class="spacer"></span>
+              <h2>Доступные тренировки</h2><span class="spacer"></span>
               <label class="sr-only" for="product-filter">Продукт</label>
               <select id="product-filter"><option value="">Все продукты</option></select>
               <label class="sr-only" for="topic-filter">Тема</label>
@@ -43,7 +43,7 @@
                 <option value="easy">Лёгкий</option><option value="medium">Средний</option><option value="hard">Сложный</option>
               </select>
             </div>
-            <div class="cards" id="cards"></div>
+            <div class="cards" id="cards"><div class="state loading"><div class="spinner" aria-hidden="true"></div><div>Загрузка тренировок…</div></div></div>
           </div>
 
           <div class="panel">
@@ -52,27 +52,75 @@
           </div>
         </section>
 
-        <!-- Session -->
-        <section id="session-view" class="hidden stack">
-          <div class="panel" id="context"></div>
-
-          <div class="panel" id="chat" aria-live="polite"></div>
-
-          <div class="composer">
-            <button type="button" id="mic-btn" title="Удерживайте, чтобы записать реплику">🎤 Удерживать и говорить</button>
-            <label class="sr-only" for="text-input">Реплика</label>
-            <input type="text" id="text-input" placeholder="…или напишите реплику" />
-            <button type="button" id="send-btn">Отправить</button>
+        <!-- Live session -->
+        <section id="session-view" class="hidden stack" aria-label="Тренировка">
+          <div class="panel session-bar">
+            <div class="client-id">
+              <span class="avatar" id="client-avatar" aria-hidden="true">AI</span>
+              <div>
+                <div class="client-name" id="client-name">AI-клиент</div>
+                <div class="client-sub" id="client-sub"></div>
+              </div>
+            </div>
+            <span class="session-timer" role="timer" aria-label="Время тренировки">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>
+              <span id="timer-value">00:00</span>
+            </span>
+            <div id="finish-row" class="finish-row">
+              <button type="button" class="secondary" id="finish-btn">Завершить тренировку</button>
+            </div>
           </div>
-          <div class="row">
-            <button type="button" class="secondary" id="finish-btn">Завершить и получить оценку</button>
-            <span id="processing" class="hidden" role="status"></span>
+          <p class="section-note m-0" id="finish-hint">Завершить можно после первой реплики.</p>
+
+          <details class="panel context" id="session-context">
+            <summary>Задача и контекст</summary>
+            <div class="context-body">
+              <p class="m-0"><span class="muted">Ваша задача:</span> <span id="context-goal"></span></p>
+              <p class="mt-2 mb-2" id="context-learning-row"><span class="muted">Чему учит сценарий:</span> <span id="context-learning"></span></p>
+              <dl class="facts mt-3" id="context-facts"></dl>
+            </div>
+          </details>
+
+          <div class="panel hidden" id="scoring" role="status" aria-live="polite">
+            <h2>Оценка разговора</h2>
+            <ol class="steps">
+              <li class="step" id="step-done" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Разговор завершён</span></li>
+              <li class="step" id="step-analysis" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Анализ<span class="step-note"></span></span></li>
+              <li class="step" id="step-result" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Результат готов<span class="step-note"></span></span></li>
+            </ol>
+            <div class="hidden mt-4" id="scoring-error">
+              <div class="alert error" role="alert" id="scoring-error-text"></div>
+              <div class="row mt-3">
+                <button type="button" id="scoring-retry">Повторить оценку</button>
+                <button type="button" class="secondary" id="scoring-back">К списку тренировок</button>
+              </div>
+            </div>
           </div>
 
-          <div class="panel hidden" id="result"></div>
+          <div class="panel hidden" id="result" tabindex="-1" aria-label="Результат тренировки"></div>
           <div class="row hidden" id="after-actions">
-            <button type="button" id="repeat-btn">Повторить сценарий</button>
+            <button type="button" id="repeat-btn">Пройти сценарий ещё раз</button>
             <button type="button" class="secondary" id="back-btn">К списку тренировок</button>
+          </div>
+
+          <section class="panel" aria-labelledby="transcript-title">
+            <h2 id="transcript-title" class="sr-only">Разговор</h2>
+            <div id="chat" class="transcript" aria-live="polite"></div>
+          </section>
+
+          <div class="panel composer-panel" id="composer">
+            <div class="voice-state" id="voice-state" data-state="ready" role="status" aria-live="polite">
+              <span class="dot" aria-hidden="true"></span><span id="voice-state-text"></span>
+            </div>
+            <div class="composer">
+              <button type="button" id="mic-btn" aria-pressed="false" aria-describedby="voice-state-text">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg>
+                <span id="mic-label">Удерживать и говорить</span>
+              </button>
+              <label class="sr-only" for="text-input">Реплика текстом</label>
+              <input type="text" id="text-input" placeholder="…или напишите реплику и нажмите Enter" autocomplete="off" />
+              <button type="button" id="send-btn">Отправить</button>
+            </div>
           </div>
         </section>
 
@@ -81,6 +129,18 @@
     </main>
   </div>
 </div>
+
+<dialog id="briefing-dlg" aria-labelledby="briefing-title"><div id="briefing-body"></div></dialog>
+
+<dialog id="finish-dlg" aria-labelledby="finish-title" aria-describedby="finish-text">
+  <div class="dialog-head"><h2 id="finish-title">Завершить тренировку?</h2></div>
+  <p id="finish-text">Разговор будет закрыт и отправлен на оценку. Продолжить этот разговор после завершения нельзя.</p>
+  <div class="dialog-actions">
+    <button type="button" id="finish-confirm">Завершить и получить оценку</button>
+    <button type="button" class="secondary" id="finish-cancel">Продолжить разговор</button>
+  </div>
+</dialog>
+
 <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
 <script src="/static/app.js"></script>

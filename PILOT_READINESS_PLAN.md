@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. **Phase 5A implemented** (A1-2 live training screen, A1-3 results; catalogue and briefing); see `PHASE_5A_IMPLEMENTATION.md`. Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -47,8 +47,8 @@ This is tracked as **A1-0** (S).
 |---|---|---|---|
 | A1-0 ✅ | Approval policy hook (see above), behaviour unchanged | P0-2 prep | S |
 | A1-1 ✅ | Design system and application shell: sidebar, header, shared components, states (§3) — Phase 4A; page-level redesigns continue in A1-2…A1-10 | §17–19 | L |
-| A1-2 | Live training screen redesign (§5) | P1-3 | M |
-| A1-3 | Results page redesign (§6) and `cap_reason` display | P1-4 | M |
+| A1-2 ✅ | Live training screen redesign (§5) — Phase 5A | P1-3 | M |
+| A1-3 ✅ | Results page redesign (§6) and `cap_reason` display — Phase 5A | P1-4 | M |
 | A1-4 | Manager Overview, My Progress, History (§4.2) and endpoint `GET /me/progress` | P1-5 | M |
 | A1-5 | Compliance access to disputed scores: list, open session read-only, dispute status (open/reviewed) and reviewer note | P1-6 | M |
 | A1-6 | Approvals queue (pending scenario and KB versions) for approver roles; KB → dependent scenarios view; warning and confirmation before archiving a KB that live scenarios use | P1-7 | M |
