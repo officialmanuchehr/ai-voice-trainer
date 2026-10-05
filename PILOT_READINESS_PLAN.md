@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -435,7 +435,7 @@ No infrastructure migration is part of this plan.
 |---|---|---|---|---|---|
 | **1 — Safety and correctness** ✅ done | A0-1 (unreviewed KB guard), A0-5 (cap reason), A1-0 (approval policy hook, no behaviour change) | S | — | Low: server-only, additive | Placeholder KBs can't be approved or published (409 lists unreviewed IDs); every capped result returns a non-empty `cap_reason`; approval behaviour identical (tests) |
 | **1b — Scoring and content safety gaps** ✅ done | Fix duplicate/unknown/missing evaluator criteria (provider retry + first-occurrence safety net), fail-closed claim verdicts (provider retry + backend normalisation), hide draft-only products from `/products` for manager and lead | S | Phase 1 | Low | See `PHASE_1B_IMPLEMENTATION.md` |
-| **2 — Tests** | All P0 rows of §8 (scoring math, cap, hidden fields, version linkage, KB enforcement, IDOR on session sub-routes, role × route matrix for content) | M | Phase 1 | Low | P0 rows of §8 green; suite runs offline in under 10 s |
+| **2 — Tests** ✅ done (except Phase 3-dependent rows) | All P0 rows of §8 (scoring math, cap, hidden fields, version linkage, KB enforcement, IDOR on session sub-routes, role × route matrix for content) | M | Phase 1 | Low | P0 rows of §8 green; suite runs offline in under 10 s |
 | **3 — Reliability and security basics** | A0-3, A0-4 (failure matrix §9), A0-6 (login throttling), A1-9 (docs off, headers), A2-6 (CI) | M | Phase 2 | **Medium:** turn-commit ordering and CSP touch live flows | Each row of §9 has a passing failure test; no raw provider text in any response; lockout works; headers present; CI runs on PR; Basic Auth can be removed (B-14) |
 | **4 — Design system and app shell** | A1-1: restructure `static/` into ES modules (§2), shell, sidebar, components, states; migrate existing pages into the shell **unchanged in behaviour** | L | Phase 3 (error-code map) | **Medium:** touches every page; mitigated by migrating one page at a time and a per-page manual QA script | Every current page works in the shell; no `alert()`; empty, loading and error states everywhere; light and dark contrast pass |
 | **5 — Manager experience** | A1-2 (session screen), A1-3 (results), A1-4 (overview, progress, history, settings), A1-11 (duration hint) | M–L | Phases 3, 4 | Medium: voice UX on real devices | Manager flow §11 passes on Chrome, Edge and Safari (desktop); a result is understandable in <10 s (hallway test with 3 people); input never lost in §9 scenarios |
