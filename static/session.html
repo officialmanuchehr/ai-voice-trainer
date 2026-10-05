@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Разбор тренировки — AI Voice Trainer</title>
+<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<div class="page narrow">
+  <div class="row"><a href="javascript:history.back()">← Назад</a></div>
+  <div class="panel" id="result">Загрузка…</div>
+  <div class="panel">
+    <h2>Транскрипт</h2>
+    <p class="muted small">Аудио не хранится — только текст разговора.</p>
+    <div id="chat" style="max-height:none"></div>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+<script>
+(async () => {
+  await initPage(null);
+  const id = new URLSearchParams(location.search).get('id');
+  const resultEl = document.getElementById('result');
+  try {
+    const [score, transcript] = await Promise.all([api(`/sessions/${encodeURIComponent(id)}/score`), api(`/sessions/${encodeURIComponent(id)}/transcript`)]);
+    renderTranscript(document.getElementById('chat'), transcript.turns);
+    if (score.status !== 'finished') {
+      resultEl.innerHTML = `<p>Сессия ещё не оценена (статус: ${esc(SESSION_STATUS[score.status] || score.status)}).</p>`;
+      return;
+    }
+    await renderResult(resultEl, score, {
+      onDispute: score.own ? (comment) => api(`/sessions/${encodeURIComponent(id)}/dispute`, { method: 'POST', json: { comment } }) : null,
+    });
+  } catch (err) {
+    resultEl.innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

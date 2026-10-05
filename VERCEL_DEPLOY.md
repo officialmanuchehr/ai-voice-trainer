@@ -35,6 +35,29 @@ pieces that make that work:
   (Deepgram / ElevenLabs keys are unverified — they only matter for the voice
   path, not text.)
 
+## Upgrading the live deployment to users/roles (Block 4)
+
+The app now has its own login, so the existing deployment needs three new env
+vars and one `init_db` run before (or right after) deploying this code:
+
+```
+python3 -c "import secrets; print(secrets.token_urlsafe(48))" | vercel env add SECRET_KEY production
+printf '%s' 'admin'          | vercel env add INITIAL_ADMIN_USERNAME production
+printf '%s' '<strong pass>'  | vercel env add INITIAL_ADMIN_PASSWORD production
+# repeat for preview/development as needed
+
+DATABASE_URL='postgresql://…' SECRET_KEY=… INITIAL_ADMIN_USERNAME=admin \
+  INITIAL_ADMIN_PASSWORD='<strong pass>' python scripts/init_db.py
+vercel --prod --archive=tgz
+```
+
+`init_db` adds the new tables/columns, versions the existing scenario and KB as
+published, inserts the three new draft products and the new draft scenarios,
+and creates the admin. Existing sessions are kept (they have no user; admins
+can still open them). Without `SECRET_KEY` the app refuses to log anyone in on
+Postgres. Basic Auth still works as an optional outer gate; once real users
+exist you can drop `BASIC_AUTH_*` to avoid the double login.
+
 ## 1. Provision a Postgres database
 
 Serverless has no persistent disk, so the default SQLite file will not work —

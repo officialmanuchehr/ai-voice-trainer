@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Вход — AI Voice Trainer</title>
+<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<div class="page" style="max-width:380px; padding-top:12vh">
+  <form class="panel" id="login-form">
+    <h1>AI Voice Trainer</h1>
+    <p class="muted small">Тренажёр клиентских менеджеров. Войдите под своей учётной записью.</p>
+    <label class="field">Логин<input type="text" id="username" autocomplete="username" required /></label>
+    <label class="field">Пароль<input type="password" id="password" autocomplete="current-password" required /></label>
+    <button type="submit" style="width:100%">Войти</button>
+    <p id="error" class="small flag-text"></p>
+  </form>
+</div>
+<script src="/static/app.js"></script>
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('error');
+  errorEl.textContent = '';
+  try {
+    await api('/auth/login', {
+      method: 'POST',
+      json: { username: document.getElementById('username').value, password: document.getElementById('password').value },
+    });
+    const next = new URLSearchParams(location.search).get('next');
+    location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  } catch (err) {
+    errorEl.textContent = err.message;
+  }
+});
+</script>
+</body>
+</html>

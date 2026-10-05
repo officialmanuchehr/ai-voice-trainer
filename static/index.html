@@ -3,312 +3,198 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI Voice Trainer — тренировка звонка</title>
-<style>
-  :root {
-    color-scheme: light dark;
-    --bg: #f5f6f8;
-    --panel: #ffffff;
-    --text: #1a1a1a;
-    --muted: #666;
-    --border: #ddd;
-    --manager: #2563eb;
-    --client: #16a34a;
-    --accent: #2563eb;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16171a;
-      --panel: #212226;
-      --text: #eaeaea;
-      --muted: #9a9a9a;
-      --border: #33343a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-  }
-  .layout {
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-height: 100vh;
-  }
-  h1 { font-size: 1.3rem; margin: 0; }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px;
-  }
-  #context div { margin-bottom: 4px; font-size: 0.92rem; }
-  #context .label { color: var(--muted); }
-  #chat {
-    flex: 1;
-    min-height: 320px;
-    max-height: 55vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .bubble {
-    max-width: 80%;
-    padding: 10px 14px;
-    border-radius: 14px;
-    line-height: 1.4;
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-  }
-  .bubble.manager {
-    align-self: flex-end;
-    background: var(--manager);
-    color: white;
-    border-bottom-right-radius: 4px;
-  }
-  .bubble.ai_client {
-    align-self: flex-start;
-    background: rgba(22, 163, 74, 0.12);
-    border: 1px solid var(--client);
-    border-bottom-left-radius: 4px;
-  }
-  .bubble.system {
-    align-self: center;
-    color: var(--muted);
-    font-size: 0.82rem;
-  }
-  .controls { display: flex; gap: 8px; align-items: center; }
-  input[type=text] {
-    flex: 1;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--text);
-    font-size: 0.95rem;
-  }
-  button {
-    padding: 10px 16px;
-    border-radius: 10px;
-    border: none;
-    background: var(--accent);
-    color: white;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-  button:disabled { opacity: 0.45; cursor: not-allowed; }
-  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  button.mic { background: #6b7280; }
-  #processing {
-    display: none;
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
-  #processing.show { display: block; }
-
-  #result h2 { margin-top: 0; }
-  .score-total { font-size: 2rem; font-weight: 700; }
-  .score-total.low { color: #dc2626; }
-  .score-total.high { color: #16a34a; }
-  .criterion { border-bottom: 1px solid var(--border); padding: 10px 0; }
-  .criterion:last-child { border-bottom: none; }
-  .criterion-head { display: flex; justify-content: space-between; font-weight: 600; }
-  .criterion-reason { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
-  .criterion-quote { font-style: italic; font-size: 0.85rem; margin-top: 4px; border-left: 3px solid var(--accent); padding-left: 8px; }
-  .critical-box { background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; border-radius: 8px; padding: 10px; margin: 6px 0; font-size: 0.88rem; }
-  .better-example { font-size: 0.88rem; margin: 6px 0; }
-  .better-example .was { color: #dc2626; }
-  .better-example .better { color: #16a34a; }
-  .claim-row { font-size: 0.85rem; padding: 4px 0; border-bottom: 1px dotted var(--border); }
-  .verdict-approved { color: #16a34a; font-weight: 600; }
-  .verdict-unapproved { color: #d97706; font-weight: 600; }
-  .verdict-forbidden { color: #dc2626; font-weight: 600; }
-</style>
+<title>Тренировка — AI Voice Trainer</title>
+<link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
-<div class="layout">
-  <h1>AI Voice Trainer — тренировка звонка</h1>
+<div class="page narrow">
 
-  <div class="panel" id="context">Загрузка сценария…</div>
+  <!-- Catalogue -->
+  <section id="catalog-view">
+    <div class="panel">
+      <div class="row">
+        <h1 style="margin:0">Выберите тренировку</h1><span class="spacer"></span>
+        <select id="product-filter"><option value="">Все продукты</option></select>
+        <select id="difficulty-filter">
+          <option value="">Любая сложность</option>
+          <option value="easy">Лёгкий</option><option value="medium">Средний</option><option value="hard">Сложный</option>
+        </select>
+      </div>
+      <p class="muted small">Каждый раз генерируется новый клиент. Результаты тренировок не влияют на KPI.</p>
+      <div class="cards" id="cards"></div>
+    </div>
 
-  <div class="controls">
-    <button id="start-btn">Начать сессию</button>
-    <span id="processing">Обрабатываю…</span>
-  </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Мои тренировки</h2>
+      <div class="table-wrap"><table id="history"></table></div>
+    </div>
+  </section>
 
-  <div class="panel" id="chat"></div>
+  <!-- Session -->
+  <section id="session-view" class="hidden">
+    <div class="panel" id="context"></div>
 
-  <div class="controls">
-    <button class="mic" id="mic-btn" disabled title="Начать сессию, чтобы включить запись">🎤 Удерживать и говорить</button>
-    <input type="text" id="text-input" placeholder="Реплика менеджера…" disabled />
-    <button id="send-btn" disabled>Отправить</button>
-  </div>
+    <div class="panel" id="chat" style="margin-top:16px"></div>
 
-  <div class="controls">
-    <button class="secondary" id="finish-btn" disabled>Завершить сессию и оценить</button>
-  </div>
+    <div class="row" style="margin-top:12px">
+      <button id="mic-btn" title="Удерживайте, чтобы записать реплику">🎤 Удерживать и говорить</button>
+      <input type="text" id="text-input" placeholder="…или напишите реплику" style="flex:1; min-width:180px" />
+      <button id="send-btn">Отправить</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="secondary" id="finish-btn">Завершить и получить оценку</button>
+      <span id="processing" class="hidden"></span>
+    </div>
 
-  <div class="panel" id="result" style="display:none"></div>
+    <div class="panel hidden" id="result" style="margin-top:16px"></div>
+    <div class="row hidden" id="after-actions" style="margin-top:12px">
+      <button id="repeat-btn">Повторить сценарий</button>
+      <button class="secondary" id="back-btn">К списку тренировок</button>
+    </div>
+  </section>
 
   <audio id="audio-player" style="display:none"></audio>
 </div>
 
+<script src="/static/app.js"></script>
 <script>
+let me = null;
+let scenarios = [];
 let sessionId = null;
-let currentScenario = null;
-
-const contextEl = document.getElementById('context');
-const chatEl = document.getElementById('chat');
-const startBtn = document.getElementById('start-btn');
-const sendBtn = document.getElementById('send-btn');
-const textInput = document.getElementById('text-input');
-const processingEl = document.getElementById('processing');
-const audioPlayer = document.getElementById('audio-player');
-const micBtn = document.getElementById('mic-btn');
-const finishBtn = document.getElementById('finish-btn');
-const resultEl = document.getElementById('result');
-
+let currentScenarioId = null;
+let busy = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 
-async function loadScenario() {
-  const res = await fetch('/scenarios');
-  const scenarios = await res.json();
-  if (!scenarios.length) {
-    contextEl.textContent = 'Сценарии не найдены.';
-    return;
-  }
-  currentScenario = scenarios[0];
-  renderContext();
-}
+const $ = (id) => document.getElementById(id);
+const chatEl = $('chat');
 
-function renderContext() {
-  const cp = currentScenario.client_profile;
-  contextEl.innerHTML = `
-    <div><span class="label">Продукт:</span> ${currentScenario.product_id}</div>
-    <div><span class="label">Цель звонка:</span> ${currentScenario.goal}</div>
-    <div><span class="label">Клиент:</span> ${cp.business_type}, ${cp.owner}</div>
-    <div><span class="label">Ситуация:</span> ${cp.current_situation}</div>
-    <div><span class="label">Настрой:</span> ${cp.emotion}, доверие к банку — ${cp.trust_level}</div>
-  `;
-}
-
-function addBubble(role, text) {
+function addBubble(role, text, meta) {
   const div = document.createElement('div');
   div.className = 'bubble ' + role;
   div.textContent = text;
+  if (meta) {
+    const m = document.createElement('span');
+    m.className = 'meta';
+    m.textContent = meta;
+    div.appendChild(m);
+  }
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   return div;
 }
 
-// Wraps fetch so every failure mode (network drop, proxy timeout returning
-// an HTML error page, 4xx/5xx JSON) surfaces as a thrown Error with a
-// readable message, instead of leaving callers to guess why res.json()
-// blew up or silently proceed on a non-ok response.
-async function fetchJson(url, options) {
-  let res;
-  try {
-    res = await fetch(url, options);
-  } catch (err) {
-    throw new Error(`сеть недоступна (${err.message})`);
-  }
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    // response body wasn't JSON — e.g. a proxy/timeout error page
-  }
-  if (!res.ok) {
-    throw new Error((data && data.detail) || `HTTP ${res.status}`);
-  }
-  return data;
+function setBusy(value, message) {
+  busy = value;
+  $('send-btn').disabled = value;
+  $('mic-btn').disabled = value;
+  $('finish-btn').disabled = value;
+  $('processing').textContent = message || 'Клиент думает…';
+  $('processing').classList.toggle('hidden', !value);
 }
 
-async function startSession() {
-  startBtn.disabled = true;
-  const res = await fetch('/sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario_id: currentScenario.id }),
-  });
-  const data = await res.json();
-  sessionId = data.id;
-  chatEl.innerHTML = '';
-  addBubble('system', `Сессия начата (kb_version ${data.kb_version})`);
-  sendBtn.disabled = false;
-  textInput.disabled = false;
-  micBtn.disabled = false;
-  micBtn.title = 'Удерживайте, чтобы записать реплику';
-  finishBtn.disabled = false;
-  resultEl.style.display = 'none';
-  textInput.focus();
+function renderCards() {
+  const product = $('product-filter').value;
+  const difficulty = $('difficulty-filter').value;
+  const items = scenarios.filter((s) => (!product || s.product_id === product) && (!difficulty || s.difficulty === difficulty));
+  $('cards').innerHTML = items.map((s) => `
+    <div class="card">
+      <div class="row"><span class="chip ${esc(s.difficulty)}">${esc(DIFFICULTY[s.difficulty] || s.difficulty)}</span>
+        <span class="muted small">${esc(s.product_name)}</span></div>
+      <div class="title">${esc(s.title)}</div>
+      <div class="small">${esc(s.goal)}</div>
+      ${s.learning_goal ? `<div class="small muted">Учебная цель: ${esc(s.learning_goal)}</div>` : ''}
+      <div class="spacer"></div>
+      <button data-start="${esc(s.id)}">Начать</button>
+    </div>`).join('') || '<p class="muted">Нет опубликованных сценариев по этому фильтру.</p>';
+}
+
+async function loadHistory() {
+  const rows = await api('/me/sessions');
+  $('history').innerHTML = rows.length ? `
+    <tr><th>Дата</th><th>Сценарий</th><th>Статус</th><th class="num">Балл</th><th></th></tr>
+    ${rows.map((r) => `<tr>
+      <td>${fmtDate(r.started_at)}</td>
+      <td>${esc(r.title)}<div class="muted small">${esc(r.product_name || '')} · ${esc(DIFFICULTY[r.difficulty] || '')}</div></td>
+      <td>${esc(SESSION_STATUS[r.status] || r.status)}${r.critical_errors ? ` <span class="flag-text small">⚠ крит. ошибок: ${r.critical_errors}</span>` : ''}${r.disputed ? ' <span class="chip">оспорено</span>' : ''}</td>
+      <td class="num">${r.total ?? '—'}</td>
+      <td class="row" style="justify-content:flex-end">
+        ${r.status === 'finished' ? `<a class="btn secondary small" href="/session?id=${encodeURIComponent(r.id)}">Разбор</a>` : ''}
+        ${r.scenario_available ? `<button class="small" data-start="${esc(r.scenario_id)}">Повторить</button>` : ''}
+      </td></tr>`).join('')}` : '<tr><td class="muted">Вы ещё не проходили тренировок.</td></tr>';
+}
+
+async function startSession(scenarioId) {
+  try {
+    const data = await api('/sessions', { method: 'POST', json: { scenario_id: scenarioId } });
+    sessionId = data.id;
+    currentScenarioId = scenarioId;
+    $('catalog-view').classList.add('hidden');
+    $('session-view').classList.remove('hidden');
+    $('result').classList.add('hidden');
+    $('after-actions').classList.add('hidden');
+    $('text-input').disabled = false;
+    setBusy(false);
+    $('context').innerHTML = `
+      <div class="row"><span class="chip ${esc(data.difficulty)}">${esc(DIFFICULTY[data.difficulty])}</span><strong>${esc(data.title)}</strong></div>
+      <p style="margin:8px 0"><span class="muted">Цель разговора:</span> ${esc(data.goal)}</p>
+      ${data.learning_goal ? `<p class="small" style="margin:4px 0"><span class="muted">Учебная цель:</span> ${esc(data.learning_goal)}</p>` : ''}
+      ${data.briefing.map((b) => `<div class="small"><span class="muted">${esc(b.label)}:</span> ${esc(b.value)}</div>`).join('')}`;
+    chatEl.innerHTML = '';
+    addBubble('system', 'Сессия начата. Начните разговор — голосом или текстом.');
+    window.scrollTo(0, 0);
+    $('text-input').focus();
+  } catch (err) {
+    alert('Не удалось начать сессию: ' + err.message);
+  }
+}
+
+function afterTurn(data) {
+  addBubble('ai_client', data.ai_client_text, data.latency_ms != null ? `ответ ${(data.latency_ms / 1000).toFixed(1)} с` : null);
 }
 
 async function sendTurn() {
-  const text = textInput.value.trim();
-  if (!text || !sessionId) return;
-  textInput.value = '';
+  const text = $('text-input').value.trim();
+  if (!text || !sessionId || busy) return;
+  $('text-input').value = '';
   addBubble('manager', text);
-  sendBtn.disabled = true;
-
-  const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
-
+  setBusy(true);
   try {
-    const data = await fetchJson(`/sessions/${sessionId}/turns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    addBubble('ai_client', data.ai_client_text);
-
-    audioPlayer.src = `/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`;
-    audioPlayer.play().catch(() => {});
+    const data = await api(`/sessions/${sessionId}/turns`, { method: 'POST', json: { text } });
+    afterTurn(data);
+    $('audio-player').src = `/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`;
+    $('audio-player').play().catch(() => {});
   } catch (err) {
     addBubble('system', 'Ошибка: ' + err.message);
   } finally {
-    clearTimeout(timer);
-    processingEl.classList.remove('show');
-    sendBtn.disabled = false;
+    setBusy(false);
   }
 }
 
 async function sendVoiceTurn(blob) {
   const placeholder = addBubble('system', 'Распознаю речь…');
-  micBtn.disabled = true;
-
-  const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
-
+  setBusy(true);
   const form = new FormData();
   form.append('audio', blob, 'turn.webm');
-
   try {
-    const data = await fetchJson(`/sessions/${sessionId}/voice-turn`, { method: 'POST', body: form });
+    const data = await api(`/sessions/${sessionId}/voice-turn`, { method: 'POST', body: form });
     placeholder.remove();
     addBubble('manager', data.manager_text);
-    addBubble('ai_client', data.ai_client_text);
-
-    audioPlayer.src = `data:audio/mpeg;base64,${data.ai_client_audio_base64}`;
-    audioPlayer.play().catch(() => {});
+    afterTurn(data);
+    if (data.ai_client_audio_base64) {
+      $('audio-player').src = `data:audio/mpeg;base64,${data.ai_client_audio_base64}`;
+      $('audio-player').play().catch(() => {});
+    }
   } catch (err) {
     placeholder.remove();
     addBubble('system', 'Ошибка: ' + err.message);
   } finally {
-    clearTimeout(timer);
-    processingEl.classList.remove('show');
-    micBtn.disabled = false;
+    setBusy(false);
   }
 }
 
 async function startRecording() {
-  if (!sessionId || micBtn.disabled) return;
+  if (!sessionId || busy) return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunks = [];
@@ -316,76 +202,58 @@ async function startRecording() {
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-      sendVoiceTurn(blob);
+      sendVoiceTurn(new Blob(recordedChunks, { type: 'audio/webm' }));
     };
     mediaRecorder.start();
-    micBtn.textContent = '🔴 Запись… (отпустите, чтобы отправить)';
+    $('mic-btn').textContent = '🔴 Запись… отпустите, чтобы отправить';
   } catch (err) {
-    addBubble('system', 'Не удалось получить доступ к микрофону: ' + err.message);
+    addBubble('system', 'Нет доступа к микрофону: ' + err.message);
   }
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-  }
-  micBtn.textContent = '🎤 Удерживать и говорить';
-}
-
-function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = s == null ? '' : String(s);
-  return div.innerHTML;
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  $('mic-btn').textContent = '🎤 Удерживать и говорить';
 }
 
 async function finishSession() {
   if (!sessionId) return;
-  finishBtn.disabled = true;
-  sendBtn.disabled = true;
-  micBtn.disabled = true;
-  processingEl.textContent = 'Оцениваю разговор (может занять несколько минут, не закрывайте страницу)…';
-  processingEl.classList.add('show');
+  setBusy(true, 'Оцениваю разговор — это может занять пару минут, не закрывайте страницу…');
+  $('text-input').disabled = true;
   try {
     // Check current status first so a retry after a dropped connection resumes
     // polling instead of re-POSTing /finish onto a scoring job already in flight.
     let current = null;
-    try { current = await fetchJson(`/sessions/${sessionId}/score`); } catch { /* fall through to POST */ }
+    try { current = await api(`/sessions/${sessionId}/score`); } catch { /* fall through */ }
     if (!current || current.status !== 'scoring') {
-      await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
+      await api(`/sessions/${sessionId}/finish`, { method: 'POST' });
     }
-    // Kick scoring off as fire-and-forget: it runs 60s+ on the server and we
-    // deliberately don't await it here — a long-held request is what mobile
-    // networks were killing. The server runs it to completion regardless of
-    // whether this fetch survives; we read the outcome by polling /score below.
-    // Safe to re-fire on a retry: the server ignores it if scoring is already
-    // in flight (and re-runs it only if a previous worker died mid-scoring).
+    // Fire-and-forget: scoring runs 60s+ server-side regardless of whether this
+    // request survives; the outcome is read by polling /score.
     fetch(`/sessions/${sessionId}/score-run`, { method: 'POST' }).catch(() => {});
     const data = await pollScore();
-    renderResult(data);
+    $('result').classList.remove('hidden');
+    const sid = sessionId;
+    await renderResult($('result'), data, {
+      onDispute: (comment) => api(`/sessions/${sid}/dispute`, { method: 'POST', json: { comment } }),
+    });
+    $('after-actions').classList.remove('hidden');
+    busy = false;
+    $('processing').classList.add('hidden');
+    $('result').scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = `<p>Ошибка оценки: ${esc(err.message)}</p>`;
-    finishBtn.disabled = false;
-    sendBtn.disabled = false;
-    micBtn.disabled = false;
-  } finally {
-    processingEl.classList.remove('show');
-    processingEl.textContent = 'Обрабатываю…';
+    addBubble('system', 'Ошибка оценки: ' + err.message);
+    setBusy(false);
+    $('text-input').disabled = false;
   }
 }
 
-// Scoring runs in the background on the server (can take 60+ seconds), so the
-// result is fetched by polling rather than waiting on one long HTTP request —
-// that long a request is exactly what got killed by a mobile network mid-flight
-// in production. Each poll is fast; transient network blips just retry a few
-// times before giving up for good.
 async function pollScore() {
   let networkRetries = 0;
   while (true) {
     let data;
     try {
-      data = await fetchJson(`/sessions/${sessionId}/score`);
+      data = await api(`/sessions/${sessionId}/score`);
       networkRetries = 0;
     } catch (err) {
       networkRetries += 1;
@@ -399,86 +267,45 @@ async function pollScore() {
   }
 }
 
-function renderResult(data) {
-  resultEl.style.display = 'block';
-  const totalClass = data.total <= 60 ? 'low' : 'high';
-
-  const claimsHtml = (data.claim_checks || []).map((c) => `
-    <div class="claim-row">
-      реплика ${esc(c.turn_index)}: «${esc(c.claim_text)}» —
-      <span class="verdict-${esc(c.verdict)}">${esc(c.verdict)}</span>
-      ${c.reason ? ` — ${esc(c.reason)}` : ''}
-    </div>
-  `).join('');
-
-  const breakdownHtml = (data.breakdown || []).map((b) => `
-    <div class="criterion">
-      <div class="criterion-head"><span>${esc(b.criterion_id)}</span><span>${esc(b.score)} / ${esc(b.max)}</span></div>
-      ${b.reason ? `<div class="criterion-reason">${esc(b.reason)}</div>` : ''}
-      ${b.quote ? `<div class="criterion-quote">«${esc(b.quote)}»</div>` : ''}
-    </div>
-  `).join('');
-
-  const criticalHtml = (data.critical_errors || []).length
-    ? (data.critical_errors || []).map((e) => `
-        <div class="critical-box">
-          <strong>${esc(e.type)}</strong><br/>
-          «${esc(e.quote)}»<br/>
-          ${esc(e.explanation)}
-        </div>
-      `).join('')
-    : '<p>Критичных ошибок нет.</p>';
-
-  const fb = data.feedback || {};
-  const strengthsHtml = (fb.strengths || []).map((s) => `<li>${esc(s)}</li>`).join('');
-  const growthHtml = (fb.growth_areas || []).map((s) => `<li>${esc(s)}</li>`).join('');
-  const examplesHtml = (fb.better_examples || []).map((e) => `
-    <div class="better-example">
-      <div class="was">Было: «${esc(e.was)}»</div>
-      <div class="better">Лучше: «${esc(e.better)}»</div>
-    </div>
-  `).join('');
-
-  resultEl.innerHTML = `
-    <h2>Результат оценки</h2>
-    <div class="score-total ${totalClass}">${esc(data.total)} / 100</div>
-
-    <h3>Claim-verification</h3>
-    ${claimsHtml || '<p>Утверждений не найдено.</p>'}
-
-    <h3>Критерии</h3>
-    ${breakdownHtml}
-
-    <h3>Критичные ошибки</h3>
-    ${criticalHtml}
-
-    <h3>Резюме</h3>
-    <p>${esc(fb.summary)}</p>
-
-    <h3>Сильные стороны</h3>
-    <ul>${strengthsHtml || '<li>—</li>'}</ul>
-
-    <h3>Зоны роста</h3>
-    <ul>${growthHtml || '<li>—</li>'}</ul>
-
-    <h3>Как сказать лучше</h3>
-    ${examplesHtml || '<p>—</p>'}
-  `;
+function backToCatalog() {
+  sessionId = null;
+  $('session-view').classList.add('hidden');
+  $('catalog-view').classList.remove('hidden');
+  loadHistory();
 }
 
-startBtn.addEventListener('click', startSession);
-finishBtn.addEventListener('click', finishSession);
-sendBtn.addEventListener('click', sendTurn);
-textInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendTurn();
+document.addEventListener('click', (e) => {
+  const id = e.target.dataset && e.target.dataset.start;
+  if (id) startSession(id);
 });
-micBtn.addEventListener('mousedown', startRecording);
-micBtn.addEventListener('mouseup', stopRecording);
-micBtn.addEventListener('mouseleave', stopRecording);
-micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
-micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+$('product-filter').addEventListener('change', renderCards);
+$('difficulty-filter').addEventListener('change', renderCards);
+$('send-btn').addEventListener('click', sendTurn);
+$('text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendTurn(); });
+$('finish-btn').addEventListener('click', finishSession);
+$('repeat-btn').addEventListener('click', () => startSession(currentScenarioId));
+$('back-btn').addEventListener('click', backToCatalog);
+const mic = $('mic-btn');
+mic.addEventListener('mousedown', startRecording);
+mic.addEventListener('mouseup', stopRecording);
+mic.addEventListener('mouseleave', stopRecording);
+mic.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
+mic.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
 
-loadScenario();
+(async () => {
+  me = await initPage('train');
+  if (!me.can_train) {
+    location.href = me.can_dashboard ? '/dashboard' : '/admin';
+    return;
+  }
+  scenarios = await api('/scenarios');
+  const products = [...new Map(scenarios.map((s) => [s.product_id, s.product_name])).entries()];
+  $('product-filter').innerHTML += products.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
+  renderCards();
+  loadHistory();
+  const repeat = new URLSearchParams(location.search).get('repeat');
+  if (repeat) startSession(repeat);
+})();
 </script>
 </body>
 </html>

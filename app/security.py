@@ -1,0 +1,127 @@
+"""Users, roles and the login cookie.
+
+Stateless signed cookie (no server-side session table) so it works unchanged
+on serverless, where each request may hit a fresh worker. The user row is
+still re-read on every request, so deactivating a user or changing their role
+takes effect immediately.
+"""
+
+import hashlib
+import hmac
+import secrets
+import time
+
+from fastapi import Depends, HTTPException, Request
+
+from app.config import settings
+from app.database import SessionLocal
+from app.models import User
+
+COOKIE_NAME = "avt_session"
+_PBKDF2_ITERATIONS = 200_000
+_DEV_SECRET = "dev-only-insecure-secret"
+
+ROLES = {
+    "manager": "Клиентский менеджер",
+    "sales_lead": "Руководитель продаж",
+    "training": "Команда обучения",
+    "product": "Продуктовая команда",
+    "compliance": "Комплаенс / контроль качества",
+    "admin": "Администратор",
+}
+
+# Who may do what (PRD §2, §12, §13). Kept in one place so the API and the
+# frontend's role-dependent navigation agree.
+TRAINEE_ROLES = {"manager", "sales_lead", "training", "admin"}
+DASHBOARD_ROLES = {"sales_lead", "training", "product", "compliance", "admin"}
+# These see only aggregates — no manager names, no transcripts (PRD §14).
+AGGREGATE_ONLY_ROLES = {"training", "product", "compliance"}
+CONTENT_VIEW_ROLES = {"training", "product", "compliance", "admin"}
+
+SCENARIO_EDIT_ROLES = {"training", "admin"}
+SCENARIO_APPROVE_ROLES = {"product", "compliance", "admin"}
+SCENARIO_PUBLISH_ROLES = {"training", "admin"}
+
+KB_EDIT_ROLES = {"product", "compliance", "admin"}
+KB_APPROVE_ROLES = {"compliance", "admin"}
+KB_PUBLISH_ROLES = {"product", "admin"}
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${_PBKDF2_ITERATIONS}${salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, iterations, salt, expected = stored.split("$")
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), int(iterations))
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), expected)
+
+
+def _secret() -> bytes:
+    if settings.secret_key:
+        return settings.secret_key.encode()
+    if settings.database_url.startswith("sqlite"):
+        return _DEV_SECRET.encode()
+    raise RuntimeError("SECRET_KEY must be set outside local SQLite development")
+
+
+def _sign(payload: str) -> str:
+    return hmac.new(_secret(), payload.encode(), hashlib.sha256).hexdigest()
+
+
+def make_token(user_id: str) -> str:
+    expires = int(time.time()) + settings.session_ttl_hours * 3600
+    payload = f"{user_id}.{expires}"
+    return f"{payload}.{_sign(payload)}"
+
+
+def read_token(token: str) -> str | None:
+    try:
+        user_id, expires, signature = token.split(".")
+    except ValueError:
+        return None
+    if not hmac.compare_digest(signature, _sign(f"{user_id}.{expires}")):
+        return None
+    if int(expires) < time.time():
+        return None
+    return user_id
+
+
+async def get_current_user(request: Request) -> User:
+    token = request.cookies.get(COOKIE_NAME)
+    user_id = read_token(token) if token else None
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="не выполнен вход")
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="пользователь не найден или отключён")
+    return user
+
+
+def require_roles(*roles: str):
+    allowed = set(roles)
+
+    async def dependency(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed:
+            raise HTTPException(status_code=403, detail="недостаточно прав")
+        return user
+
+    return dependency
+
+
+def user_public(user: User) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role,
+        "role_name": ROLES.get(user.role, user.role),
+        "team_id": user.team_id,
+        "is_active": user.is_active,
+    }

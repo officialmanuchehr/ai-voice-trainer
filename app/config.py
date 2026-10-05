@@ -65,5 +65,21 @@ class Settings(BaseSettings):
     # you run scripts/init_db.py once instead.
     auto_init_db: bool = True
 
+    # Signs the login cookie (app/security.py). MUST be a long random string
+    # outside local SQLite dev — the app refuses to issue cookies without it
+    # when running on Postgres.
+    secret_key: str = ""
+    session_ttl_hours: int = 12
+
+    # Created by init_db if no user with this username exists yet — the way
+    # to get the first admin into a fresh database.
+    initial_admin_username: str = ""
+    initial_admin_password: str = ""
+
+    # Local dev only: creates a demo team and one user per role, all with
+    # DEMO_USERS_PASSWORD. Never enable on a real deployment.
+    seed_demo_users: bool = False
+    demo_users_password: str = "demo12345"
+
 
 settings = Settings()

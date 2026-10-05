@@ -8,7 +8,10 @@
       "title": "Оценка продажного разговора (100 баллов)",
       "source": "PRD раздел 9",
       "applies_to": [
-        "merchant_onboarding"
+        "merchant_onboarding",
+        "rko",
+        "payroll_project",
+        "business_loan"
       ],
       "max_score": 100,
       "criteria": [
