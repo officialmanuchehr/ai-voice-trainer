@@ -249,8 +249,11 @@ async function finishSession() {
 }
 
 async function pollScore() {
+  // The server caps a scoring run at ~270s; past this the run is lost, not slow.
+  const deadline = Date.now() + 6 * 60 * 1000;
   let networkRetries = 0;
   while (true) {
+    if (Date.now() > deadline) throw new Error('оценка заняла слишком много времени — нажмите «Завершить и получить оценку» ещё раз');
     let data;
     try {
       data = await api(`/sessions/${sessionId}/score`);

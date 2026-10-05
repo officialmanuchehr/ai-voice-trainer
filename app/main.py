@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import time
 from contextlib import asynccontextmanager
@@ -42,6 +43,11 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 # to have a dead worker (serverless function timed out or crashed mid-run) and
 # may be re-claimed by a fresh POST /sessions/{id}/score-run.
 _SCORING_CLAIM_TTL = timedelta(minutes=10)
+
+# Hard cap on one scoring run, kept under the Vercel function limit (300s) so a
+# slow run ends as "finish_error" the user can retry, instead of the function
+# being killed mid-run and the session sitting in "scoring" until the claim TTL.
+_SCORING_BUDGET_SECONDS = 270
 
 
 # (table, column, type, default) — see _add_missing_columns. "TS" and "JSON"
@@ -494,7 +500,15 @@ async def score_run(session_id: str, user: User = Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="session not found")
             return {"session_id": session_id, "status": session.status, "claimed": False}
 
-    await _run_scoring(session_id)
+    try:
+        await asyncio.wait_for(_run_scoring(session_id), timeout=_SCORING_BUDGET_SECONDS)
+    except TimeoutError:
+        # wait_for cancelled _run_scoring, so its own error handler never ran.
+        async with SessionLocal() as db:
+            session = await db.get(SessionModel, session_id)
+            session.status = "finish_error"
+            session.scoring_error = f"оценка не уложилась в {_SCORING_BUDGET_SECONDS} с — попробуйте ещё раз"
+            await db.commit()
 
     async with SessionLocal() as db:
         session = await db.get(SessionModel, session_id)

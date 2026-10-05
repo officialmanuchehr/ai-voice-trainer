@@ -11,29 +11,28 @@ pieces that make that work:
 | `scripts/init_db.py` | Creates tables + runs migrations + loads seed data. Run manually — the app does **not** do this on startup in serverless (`AUTO_INIT_DB=false`). |
 | `POST /sessions/{id}/score-run` | Runs scoring synchronously (~60s+). The browser fires it without waiting and polls `GET /sessions/{id}/score` for the result. Replaces the old in-process `BackgroundTask`, which a serverless function kills the moment it responds. |
 
-## Current state (deployed 2026-09-10)
+## Current state (updated 2026-10-05)
 
 - Vercel project **`officialmanuchehr-9511s-projects/ai-voice-trainer`**, linked
   to this GitHub repo. Production alias: `https://ai-voice-trainer-weld.vercel.app`.
 - **Neon Postgres** `neon-blue-envelope` provisioned via the Vercel marketplace
   integration and connected — it set `DATABASE_URL` (+ `POSTGRES_*`, `PG*`) on
-  all environments. Schema created and seed loaded (`scripts/init_db.py`).
-- Other env vars (production/preview/development): `AUTO_INIT_DB=false`,
-  `BASIC_AUTH_USERNAME`/`BASIC_AUTH_PASSWORD` (generated), and the four
-  providers + keys mirrored from local `.env` (`deepgram`/`deepseek`/`claude`/
-  `elevenlabs`).
-- **Verified live:** `/health`, `/scenarios`, `/products`, create session, text
-  turn (real DeepSeek), `/finish` → `scoring`, `/score-run` claim + `/score`
-  polling — all working end to end.
-- **Known bad:** the `ANTHROPIC_API_KEY` copied from `.env` is rejected by the
-  API (401 `API key is invalid`), so the scoring step fails with
-  `finish_error`. Set a valid key:
+  all environments.
+- **Block 4 (users/roles) is live.** `SECRET_KEY`, `INITIAL_ADMIN_USERNAME`,
+  `INITIAL_ADMIN_PASSWORD` set (production + development), `init_db` run
+  against Neon, admin user created. `BASIC_AUTH_*` is still on in production
+  as an outer gate, so users log in twice (browser prompt, then `/login`).
+- Functions run on **fluid compute with a 300s limit** (project default,
+  confirmed on the deployment: `functionTimeout: 300`).
+- **Verified live (2026-10-05):** login, admin, dashboard, text turn (DeepSeek),
+  TTS audio (ElevenLabs), full voice turn (Deepgram → DeepSeek → ElevenLabs).
+- **Known bad:** `ANTHROPIC_API_KEY` is rejected by the API (401), so scoring
+  ends in `finish_error`. Set a valid key and redeploy:
   ```
+  vercel env rm ANTHROPIC_API_KEY production --yes
   printf '%s' 'sk-ant-...' | vercel env add ANTHROPIC_API_KEY production
-  # repeat for preview, development, then: vercel --prod --archive=tgz
+  vercel --prod --archive=tgz
   ```
-  (Deepgram / ElevenLabs keys are unverified — they only matter for the voice
-  path, not text.)
 
 ## Upgrading the live deployment to users/roles (Block 4)
 
@@ -130,17 +129,11 @@ Run it from a machine with the repo checked out and `requirements.txt` installed
 
 ## Known limitations on Vercel
 
-1. **Function timeout = 60s (plan default).** A full `claude` scoring run is
-   two sequential streamed calls and can exceed 60s. If scoring times out, the
-   session stays `scoring`; after 10 min `score-run` can re-claim it (the
-   browser will have stopped polling by then — the user clicks finish again).
-   The legacy `builds` config in `vercel.json` does **not** honour a
-   `maxDuration` key, so to raise the cap on Pro you switch the function to the
-   modern `functions` config — but that reintroduces the path-rewrite bug
-   above, so it also needs `api/index.py` moved to a real catch-all
-   (`api/[[...path]].py` is not supported for Python; the practical route is a
-   small ASGI shim that strips the `/api/index` prefix). For serious use, Pro +
-   that rework is recommended.
+1. **Function timeout = 300s** (fluid compute default). A full `claude`
+   scoring run is two sequential streamed calls; `score-run` caps it at 270s
+   (`_SCORING_BUDGET_SECONDS` in `app/main.py`) so an overrun is recorded as
+   `finish_error` the user can retry, instead of the function being killed
+   with the session stuck in `scoring`. The browser stops polling after 6 min.
 
 2. **4.5 MB request/response body limit.** `/sessions/{id}/voice-turn` uploads
    audio and returns base64 audio; long turns with a real TTS/STT provider can

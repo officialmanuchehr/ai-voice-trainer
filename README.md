@@ -21,6 +21,8 @@
 сложности, генерация разных клиентов, версии и статусы сценариев и базы
 знаний, журнал действий, дашборд руководителя, админка, история и повтор
 тренировок, оспаривание оценки, замер времени ответа AI-клиента.
+Развёрнуто на Vercel + Neon: https://ai-voice-trainer-weld.vercel.app
+(см. `VERCEL_DEPLOY.md`).
 
 ## Роли, админка, дашборд (Блок 4)
 
@@ -121,6 +123,16 @@ uvicorn app.main:app --reload --port 8000
 `scn_merchant_onboarding_medium_01`.
 
 ## Проверка
+
+Автотесты прав доступа и Блока 4 (без сети и ключей — SQLite во временной
+папке, все провайдеры `stub`, демо-пользователи):
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/test_access.py
+```
+
+Ниже — ручная проверка через `curl`.
 
 ```bash
 # 1. Health-check
