@@ -5,10 +5,15 @@ const DIFFICULTY = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сл
 const STATUS = { draft: 'Черновик', approved: 'Утверждено', published: 'Опубликовано', archived: 'Архив' };
 const SESSION_STATUS = { active: 'в процессе', scoring: 'оценивается', finished: 'оценено', finish_error: 'ошибка оценки' };
 
+// HTML-escapes a value for element content AND quoted attribute values
+// (title="…", value="…", data-*="…"). Pure string replacement, no DOM: every
+// character is replaced in one pass, so the entities it produces are never
+// re-escaped. Quotes must be escaped — the previous DOM-based version
+// (textContent → innerHTML) left " and ' raw, which let stored text break out
+// of an attribute. CSP is defence in depth, not the escaping boundary.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = s == null ? '' : String(s);
-  return div.innerHTML;
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
 }
 
 function fmtDate(iso) {
