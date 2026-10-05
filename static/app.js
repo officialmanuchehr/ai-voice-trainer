@@ -1,5 +1,5 @@
-// Shared helpers for every page: API calls, auth guard + top navigation,
-// and the score/feedback renderer used by the trainer and session pages.
+// Shared helpers for every page: API calls, escaping, dates, and the
+// score/feedback renderer used by the trainer and session pages.
 
 const DIFFICULTY = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный' };
 const STATUS = { draft: 'Черновик', approved: 'Утверждено', published: 'Опубликовано', archived: 'Архив' };
@@ -50,31 +50,7 @@ async function api(url, options = {}) {
   return data;
 }
 
-async function initPage(active, requiredFlag) {
-  const me = await api('/auth/me');
-  if (requiredFlag && !me[requiredFlag]) {
-    document.body.innerHTML = '<div class="page narrow"><div class="panel">Недостаточно прав для этой страницы. <a href="/">На главную</a></div></div>';
-    throw new Error('forbidden');
-  }
-  const links = [];
-  if (me.can_train) links.push(['train', '/', 'Тренировка']);
-  if (me.can_dashboard) links.push(['dashboard', '/dashboard', 'Дашборд']);
-  if (me.can_content) links.push(['admin', '/admin', 'Админка']);
-  const bar = document.createElement('header');
-  bar.className = 'topbar';
-  bar.innerHTML = `
-    <span class="brand">AI Voice Trainer</span>
-    <nav>${links.map(([k, href, label]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
-    <span class="who">${esc(me.full_name || me.username)} · ${esc(me.role_name)}${me.team_name ? ' · ' + esc(me.team_name) : ''}</span>
-    <button class="secondary small" id="logout-btn">Выйти</button>`;
-  bar.insertBefore(themeSelect(), bar.querySelector('#logout-btn'));
-  document.body.prepend(bar);
-  document.getElementById('logout-btn').addEventListener('click', async () => {
-    await fetch('/auth/logout', { method: 'POST' });
-    location.href = '/login';
-  });
-  return me;
-}
+// initPage() (auth guard + app shell) lives in /static/js/shell.js.
 
 let _criteriaNames = null;
 async function criteriaNames() {
@@ -119,7 +95,7 @@ async function renderResult(el, data, { onDispute } = {}) {
     <div class="better-example"><div class="was">«${esc(e.was)}»</div><div class="better">«${esc(e.better)}»</div></div>`).join('');
 
   el.innerHTML = `
-    <div class="row"><h2 style="margin:0">Результат</h2><span class="spacer"></span>
+    <div class="row"><h2 class="m-0">Результат</h2><span class="spacer"></span>
       <span class="muted small">сценарий v${esc(data.scenario_version)} · база знаний v${esc(data.kb_version)}</span></div>
     <div class="score-total ${scoreClass(data.total)}">${esc(data.total)} / 100</div>
     ${capNote(data.cap_reason)}
@@ -138,7 +114,7 @@ async function renderResult(el, data, { onDispute } = {}) {
   } else if (onDispute) {
     area.innerHTML = `<h3>Не согласны с оценкой?</h3>
       <textarea id="dispute-text" placeholder="Опишите, с чем вы не согласны — команда обучения посмотрит"></textarea>
-      <div class="row" style="margin-top:6px"><button class="secondary" id="dispute-btn">Отправить возражение</button><span id="dispute-msg" class="small"></span></div>`;
+      <div class="row mt-2"><button class="secondary" id="dispute-btn">Отправить возражение</button><span id="dispute-msg" class="small"></span></div>`;
     area.querySelector('#dispute-btn').addEventListener('click', async () => {
       const text = area.querySelector('#dispute-text').value.trim();
       if (!text) return;

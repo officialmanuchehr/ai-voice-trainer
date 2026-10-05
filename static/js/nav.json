@@ -1,0 +1,28 @@
+{
+  "_comment": "Sidebar navigation. Visibility is UX only — the backend enforces access. Each item's `roles` must match the backend: `probe` is an API endpoint that answers 200 for those roles and 403 for every other role except the ones listed in `hidden_but_allowed` (allowed, but deliberately not shown). Checked by tests/test_phase4a.py. Only pages that exist are listed.",
+  "groups": [
+    {
+      "label": "Работа",
+      "items": [
+        { "key": "dashboard", "label": "Обзор", "href": "/dashboard", "icon": "overview", "roles": ["sales_lead", "training", "product", "compliance", "admin"], "probe": "/dashboard/data" },
+        { "key": "team", "label": "Команда", "href": "/dashboard#managers-panel", "icon": "team", "roles": ["sales_lead"], "probe": "/dashboard/managers/{self}/sessions", "hidden_but_allowed": ["admin"] },
+        { "key": "train", "label": "Тренировка", "href": "/", "icon": "mic", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" },
+        { "key": "history", "label": "История", "href": "/#history", "icon": "history", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" }
+      ]
+    },
+    {
+      "label": "Контент",
+      "items": [
+        { "key": "scenarios", "label": "Сценарии", "href": "/admin?tab=scenarios", "icon": "scenarios", "roles": ["training", "product", "compliance", "admin"], "probe": "/admin/scenarios" },
+        { "key": "kb", "label": "База знаний", "href": "/admin?tab=kb", "icon": "book", "roles": ["training", "product", "compliance", "admin"], "probe": "/admin/kb" }
+      ]
+    },
+    {
+      "label": "Администрирование",
+      "items": [
+        { "key": "users", "label": "Пользователи и команды", "href": "/admin?tab=users", "icon": "users", "roles": ["admin"], "probe": "/admin/users" },
+        { "key": "audit", "label": "Журнал действий", "href": "/admin?tab=audit", "icon": "audit", "roles": ["compliance", "admin"], "probe": "/admin/audit" }
+      ]
+    }
+  ]
+}

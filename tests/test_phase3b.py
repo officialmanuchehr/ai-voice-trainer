@@ -210,12 +210,16 @@ def test_security_headers_on_pages_assets_and_api(server, path):
 
 
 def test_csp_fits_the_existing_frontend(server):
-    """Every page loads only same-origin resources; inline scripts/styles and
-    data: audio (what the pages use) are allowed; framing is not."""
+    """Every page loads only same-origin resources and (since Phase 4A) has no
+    inline code, so the CSP needs no 'unsafe-inline'; data: audio is allowed;
+    framing is not."""
     for page in ("/login", "/", "/dashboard", "/admin", "/session"):
         html = TestClient(main.app).get(page).text
         assert not re.search(r"(src|href)=\"https?://", html), page
-    for directive in ("script-src 'self' 'unsafe-inline'", "media-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'"):
+        assert "<script>" not in html and "<style" not in html and 'style="' not in html, page
+        assert not re.search(r" on[a-z]+=\"", html) and "javascript:" not in html, page
+    assert "'unsafe-inline'" not in CONTENT_SECURITY_POLICY and "'unsafe-eval'" not in CONTENT_SECURITY_POLICY
+    for directive in ("script-src 'self'", "style-src 'self'", "media-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'"):
         assert directive in CONTENT_SECURITY_POLICY
 
 

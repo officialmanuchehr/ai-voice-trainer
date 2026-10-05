@@ -13,14 +13,16 @@ from starlette.datastructures import MutableHeaders
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
-# Compatible with the current static frontend: one inline <script> per page and
-# inline style attributes (hence 'unsafe-inline'), client audio as data: URLs,
-# same-origin API calls only, no third-party resources.
+# Strict for the current static frontend: all scripts and styles are files
+# under /static (no inline <script>, style attributes, event handlers or
+# javascript: URLs — Phase 4A), client audio as data: URLs, same-origin API
+# calls only, no third-party resources. Dynamic sizes are set via CSSOM
+# (element.style.x = …), which style-src 'self' allows.
 CONTENT_SECURITY_POLICY = "; ".join(
     [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
-        "style-src 'self' 'unsafe-inline'",
+        "script-src 'self'",
+        "style-src 'self'",
         "img-src 'self' data:",
         "media-src 'self' data: blob:",
         "connect-src 'self'",

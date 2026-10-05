@@ -1,6 +1,6 @@
 // Colour theme: "system" (follow the device), "light" or "dark". Loaded in
 // <head> so the saved choice applies before first paint — no flash of the
-// wrong theme. The palettes themselves live in app.css (:root tokens).
+// wrong theme. The palettes themselves live in css/app.css (:root tokens).
 
 const THEMES = { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' };
 const THEME_KEY = 'avt-theme';

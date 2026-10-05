@@ -4,39 +4,45 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Разбор тренировки — AI Voice Trainer</title>
-<link rel="stylesheet" href="/static/app.css" />
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/static/css/app.css" />
 <script src="/static/theme.js"></script>
 </head>
 <body>
-<div class="page narrow">
-  <div class="row"><a href="javascript:history.back()">← Назад</a></div>
-  <div class="panel" id="result">Загрузка…</div>
-  <div class="panel">
-    <h2>Транскрипт</h2>
-    <p class="muted small">Аудио не хранится — только текст разговора.</p>
-    <div id="chat" style="max-height:none"></div>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
+<div class="app-shell" id="app-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Основная навигация"></aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="app-main">
+    <header class="app-header">
+      <button type="button" class="ghost icon-button menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Открыть меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="app-header-titles">
+        <h1 id="page-title">Разбор тренировки</h1>
+        <p class="page-subtitle" id="page-subtitle">Аудио не хранится — только текст разговора.</p>
+      </div>
+      <div class="app-header-actions" id="page-actions">
+        <button type="button" class="secondary small" id="back-btn">← Назад</button>
+      </div>
+    </header>
+
+    <main id="main" class="app-content" tabindex="-1">
+      <div class="page narrow">
+        <div class="panel" id="result"><div class="state loading"><div class="spinner" aria-hidden="true"></div><div>Загрузка…</div></div></div>
+        <div class="panel">
+          <h2>Транскрипт</h2>
+          <div id="chat" class="chat-full"></div>
+        </div>
+      </div>
+    </main>
   </div>
 </div>
+<div class="toast-region" id="toast-region" aria-live="polite"></div>
+
 <script src="/static/app.js"></script>
-<script>
-(async () => {
-  await initPage(null);
-  const id = new URLSearchParams(location.search).get('id');
-  const resultEl = document.getElementById('result');
-  try {
-    const [score, transcript] = await Promise.all([api(`/sessions/${encodeURIComponent(id)}/score`), api(`/sessions/${encodeURIComponent(id)}/transcript`)]);
-    renderTranscript(document.getElementById('chat'), transcript.turns);
-    if (score.status !== 'finished') {
-      resultEl.innerHTML = `<p>Сессия ещё не оценена (статус: ${esc(SESSION_STATUS[score.status] || score.status)}).</p>`;
-      return;
-    }
-    await renderResult(resultEl, score, {
-      onDispute: score.own ? (comment) => api(`/sessions/${encodeURIComponent(id)}/dispute`, { method: 'POST', json: { comment } }) : null,
-    });
-  } catch (err) {
-    resultEl.innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
-  }
-})();
-</script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/shell.js"></script>
+<script src="/static/js/pages/session.js"></script>
 </body>
 </html>

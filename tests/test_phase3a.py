@@ -266,5 +266,7 @@ def test_frontend_never_renders_raw_http_status(server):
     app_js = server.get("/static/app.js").text
     assert "HTTP ${res.status}" not in app_js
     assert "code: data && data.code" in app_js
-    index = server.get("/").text
-    assert "async function syncChat()" in index and "manager_text" in index and "audio_error" in index
+    # Phase 4A moved the training page's script out of the HTML (strict CSP).
+    assert '<script src="/static/js/pages/training.js"></script>' in server.get("/").text
+    training = server.get("/static/js/pages/training.js").text
+    assert "async function syncChat()" in training and "manager_text" in training and "audio_error" in training
