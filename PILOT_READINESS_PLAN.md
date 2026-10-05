@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -28,8 +28,8 @@
 |---|---|---|---|
 | **A0-1** ✅ | **Server-side guard against publishing unreviewed KB content.** Block `approved` and `published` for a KB version if any `approved_facts[]` (and, for consistency, `approved_arguments[]`, `objections[]`, `disclaimers[]`) has `needs_review: true`, or `draft_note` is present. Return 409 with the count and IDs of the unreviewed entries. Add the same guard to scenario publish: the product's KB must be published (already enforced) and clean. | P0-1 | S |
 | **A0-2** | **Safety-net tests before any change:** scoring arithmetic, the 60 cap (both triggers), KB enforcement, scenario and KB version linkage, hidden-field exclusion, the AI client prompt containing only the bound KB version. See §8. | P1-11 | M |
-| **A0-3** | **Transcript ↔ screen consistency on provider failure.** Today a failed text turn leaves the manager's bubble on screen although it was rolled back. A voice turn that fails at TTS has already committed both turns, which the UI never shows, so a retry duplicates them. Rule: the screen must always equal the stored transcript. | P1-1 | M |
-| **A0-4** | **No raw provider or exception text shown to users.** `finish_error` stores `str(exc)` and `/score` returns it to the manager. Provider HTTP errors become unhandled 500s. Map them to stable error codes plus Russian messages; keep the technical detail in server logs only. | P1-1, Security §6.9 | S |
+| **A0-3** ✅ | **Transcript ↔ screen consistency on provider failure.** Today a failed text turn leaves the manager's bubble on screen although it was rolled back. A voice turn that fails at TTS has already committed both turns, which the UI never shows, so a retry duplicates them. Rule: the screen must always equal the stored transcript. | P1-1 | M |
+| **A0-4** ✅ | **No raw provider or exception text shown to users.** `finish_error` stores `str(exc)` and `/score` returns it to the manager. Provider HTTP errors become unhandled 500s. Map them to stable error codes plus Russian messages; keep the technical detail in server logs only. | P1-1, Security §6.9 | S |
 | **A0-5** ✅ | **The score cap is always explained.** When the cap is triggered by a claim verdict without a matching `critical_errors` entry, return an explicit `cap_reason` (which claims triggered it) and render it. | P1-2 | S |
 | **A0-6** | **Login throttling plus failed-login audit.** Must ship before Basic Auth is removed (production is internet-exposed). | P1-10 | S |
 

@@ -1,12 +1,13 @@
 import asyncio
 import base64
+import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import func, inspect, or_, select, text, update
@@ -48,6 +49,37 @@ _SCORING_CLAIM_TTL = timedelta(minutes=10)
 # slow run ends as "finish_error" the user can retry, instead of the function
 # being killed mid-run and the session sitting in "scoring" until the claim TTL.
 _SCORING_BUDGET_SECONDS = 270
+
+logger = logging.getLogger("app")
+
+# Client-facing text for each external-service failure. The provider's own
+# error (status, body, traceback) goes to the server log only — never to the
+# browser.
+SERVICE_MESSAGES = {
+    "stt_unavailable": "Не удалось распознать речь. Запишите реплику ещё раз или напишите её текстом.",
+    "dialog_unavailable": "Клиент сейчас не может ответить. Ваша реплика не сохранена — отправьте её ещё раз.",
+    "audio_unavailable": "Озвучка временно недоступна — прочитайте ответ клиента.",
+    "scoring_unavailable": "Оценка временно недоступна. Нажмите «Завершить и получить оценку» ещё раз.",
+}
+
+
+class ServiceUnavailable(Exception):
+    """An external AI service failed. Rendered as 502 {code, detail[, extra]}."""
+
+    def __init__(self, code: str, **extra):
+        super().__init__(code)
+        self.code = code
+        self.extra = extra
+
+
+async def _call_service(code: str, call):
+    """Awaits one provider call; on any failure logs it server-side and raises
+    ServiceUnavailable(code) so callers never leak provider errors."""
+    try:
+        return await call
+    except Exception:
+        logger.exception("external service failed (%s)", code)
+        raise ServiceUnavailable(code) from None
 
 
 # (table, column, type, default) — see _add_missing_columns. "TS" and "JSON"
@@ -119,6 +151,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Voice Trainer", lifespan=lifespan)
+
+
+@app.exception_handler(ServiceUnavailable)
+async def _service_unavailable(request, exc: ServiceUnavailable):
+    return JSONResponse(status_code=502, content={"code": exc.code, "detail": SERVICE_MESSAGES[exc.code], **exc.extra})
+
 app.add_middleware(BasicAuthMiddleware)
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
@@ -357,7 +395,9 @@ async def _process_manager_turn(db: AsyncSession, session_id: str, manager_text:
     system_prompt = build_client_system_prompt(client_profile, kb.data, content["difficulty"])
 
     started = time.perf_counter()
-    ai_text = await dialog_provider.respond(system_prompt, messages)
+    # On failure nothing is committed: the manager turn above is only flushed,
+    # and the caller's session rolls back — the transcript stays as it was.
+    ai_text = await _call_service("dialog_unavailable", dialog_provider.respond(system_prompt, messages))
     latency_ms = round((time.perf_counter() - started) * 1000)
 
     ai_turn = TranscriptTurn(
@@ -392,15 +432,29 @@ async def post_voice_turn(session_id: str, audio: UploadFile = File(...), user: 
         await _load_session(db, session_id, user, write=True)
     audio_bytes = await audio.read()
     try:
-        manager_text = await stt_provider.transcribe(audio_bytes, "ru", STT_VOCABULARY)
+        manager_text = await _call_service("stt_unavailable", stt_provider.transcribe(audio_bytes, "ru", STT_VOCABULARY))
     finally:
         del audio_bytes  # never touches disk or the DB; discarded right after transcription
 
-    async with SessionLocal() as db:
-        result = await _process_manager_turn(db, session_id, manager_text, user)
+    try:
+        async with SessionLocal() as db:
+            result = await _process_manager_turn(db, session_id, manager_text, user)
+    except ServiceUnavailable as exc:
+        # Nothing was stored; hand the recognised text back so the manager can
+        # resend it as text instead of recording again.
+        exc.extra["manager_text"] = manager_text
+        raise
 
-    ai_audio = await tts_provider.synthesize(result["ai_client_text"], "ru")
-    result["ai_client_audio_base64"] = base64.b64encode(ai_audio).decode("ascii")
+    # The turn pair is committed. Voice is non-critical: if TTS fails the
+    # conversation goes on in text, so this never fails the request.
+    try:
+        ai_audio = await tts_provider.synthesize(result["ai_client_text"], "ru")
+    except Exception:
+        logger.exception("external service failed (audio_unavailable)")
+        result["ai_client_audio_base64"] = None
+        result["audio_error"] = "audio_unavailable"
+    else:
+        result["ai_client_audio_base64"] = base64.b64encode(ai_audio).decode("ascii")
     return result
 
 
@@ -439,7 +493,7 @@ async def get_turn_audio(session_id: str, turn_index: int, user: User = Depends(
             raise HTTPException(status_code=400, detail="audio is only available for ai_client turns")
         text = turn.text
 
-    audio_bytes = await tts_provider.synthesize(text, "ru")
+    audio_bytes = await _call_service("audio_unavailable", tts_provider.synthesize(text, "ru"))
     return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
@@ -612,10 +666,11 @@ async def _run_scoring(session_id: str) -> None:
             )
             await db.commit()
         except Exception as exc:
+            logger.exception("external service failed (scoring_unavailable) for session %s", session_id)
             await db.rollback()
             session = await db.get(SessionModel, session_id)
             session.status = "finish_error"
-            session.scoring_error = str(exc)
+            session.scoring_error = str(exc)  # server-side diagnostics; never returned to clients
             await db.commit()
 
 
@@ -627,7 +682,12 @@ async def get_score(session_id: str, user: User = Depends(get_current_user)):
         if session.status == "scoring":
             return {"session_id": session_id, "status": "scoring"}
         if session.status == "finish_error":
-            return {"session_id": session_id, "status": "finish_error", "detail": session.scoring_error}
+            return {
+                "session_id": session_id,
+                "status": "finish_error",
+                "code": "scoring_unavailable",
+                "detail": SERVICE_MESSAGES["scoring_unavailable"],
+            }
         if session.status != "finished":
             # e.g. "active" — scoring hasn't been started yet. Not an error: lets the
             # frontend check current state before deciding whether to POST /finish.

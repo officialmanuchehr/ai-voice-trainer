@@ -29,7 +29,7 @@ async function api(url, options = {}) {
   try {
     res = await fetch(url, opts);
   } catch (err) {
-    throw new Error(`сеть недоступна (${err.message})`);
+    throw Object.assign(new Error('Нет связи с сервером. Проверьте сеть и попробуйте ещё раз.'), { code: 'network' });
   }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
@@ -40,7 +40,10 @@ async function api(url, options = {}) {
   if (!res.ok) {
     let detail = data && data.detail;
     if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join('; ');
-    throw new Error(detail || `HTTP ${res.status}`);
+    // Unexpected server failures carry no safe detail; never show raw HTTP text.
+    if (!detail) detail = res.status >= 500 ? 'Сервис временно недоступен. Попробуйте ещё раз.' : `Ошибка запроса (${res.status})`;
+    // `code` and the rest of the body (e.g. manager_text) let pages recover.
+    throw Object.assign(new Error(detail), { status: res.status, code: data && data.code, data });
   }
   return data;
 }

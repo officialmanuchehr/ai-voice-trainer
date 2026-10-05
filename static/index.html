@@ -65,6 +65,7 @@ let scenarios = [];
 let sessionId = null;
 let currentScenarioId = null;
 let busy = false;
+let storedTurns = 0;
 let mediaRecorder = null;
 let recordedChunks = [];
 
@@ -146,6 +147,7 @@ async function startSession(scenarioId) {
       ${data.learning_goal ? `<p class="small" style="margin:4px 0"><span class="muted">Учебная цель:</span> ${esc(data.learning_goal)}</p>` : ''}
       ${data.briefing.map((b) => `<div class="small"><span class="muted">${esc(b.label)}:</span> ${esc(b.value)}</div>`).join('')}`;
     chatEl.innerHTML = '';
+    storedTurns = 0;
     addBubble('system', 'Сессия начата. Начните разговор — голосом или текстом.');
     window.scrollTo(0, 0);
     $('text-input').focus();
@@ -154,23 +156,67 @@ async function startSession(scenarioId) {
   }
 }
 
+function latencyMeta(ms) {
+  return ms != null ? `ответ ${(ms / 1000).toFixed(1)} с` : null;
+}
+
 function afterTurn(data) {
-  addBubble('ai_client', data.ai_client_text, data.latency_ms != null ? `ответ ${(data.latency_ms / 1000).toFixed(1)} с` : null);
+  addBubble('ai_client', data.ai_client_text, latencyMeta(data.latency_ms));
+  storedTurns = data.ai_client_turn_index;
+}
+
+// The stored transcript is the source of truth. After a failed turn the chat
+// is redrawn from it, so the screen never shows a line that wasn't saved and
+// never misses one that was (e.g. the server saved it but the response was lost).
+async function syncChat() {
+  try {
+    const { turns } = await api(`/sessions/${sessionId}/transcript`);
+    chatEl.innerHTML = '';
+    for (const t of turns) addBubble(t.role, t.text, latencyMeta(t.latency_ms));
+    storedTurns = turns.length;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A turn failed. Show a safe message; if the line wasn't saved, put its text
+// back into the input so it can be resent without retyping or re-recording.
+async function turnFailed(err, unsentText, hint) {
+  const before = storedTurns;
+  await syncChat();
+  if (storedTurns > before) return;  // it went through after all — nothing to resend
+  const note = addBubble('system', err.message + (hint ? ' ' + hint : ''));
+  if (unsentText) {
+    $('text-input').value = unsentText;
+    const retry = document.createElement('button');
+    retry.className = 'secondary small';
+    retry.textContent = 'Повторить';
+    retry.style.marginLeft = '8px';
+    retry.addEventListener('click', () => { note.remove(); sendTurn(); });
+    note.appendChild(retry);
+  }
+}
+
+function playTurnAudio(src) {
+  $('audio-player').src = src;
+  $('audio-player').play().catch(() => {});
 }
 
 async function sendTurn() {
   const text = $('text-input').value.trim();
   if (!text || !sessionId || busy) return;
   $('text-input').value = '';
-  addBubble('manager', text);
+  const pending = addBubble('manager', text, 'отправляется…');
   setBusy(true);
   try {
     const data = await api(`/sessions/${sessionId}/turns`, { method: 'POST', json: { text } });
+    pending.querySelector('.meta').remove();
     afterTurn(data);
-    $('audio-player').src = `/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`;
-    $('audio-player').play().catch(() => {});
+    playTurnAudio(`/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`);
   } catch (err) {
-    addBubble('system', 'Ошибка: ' + err.message);
+    pending.remove();
+    await turnFailed(err, text);
   } finally {
     setBusy(false);
   }
@@ -186,13 +232,12 @@ async function sendVoiceTurn(blob) {
     placeholder.remove();
     addBubble('manager', data.manager_text);
     afterTurn(data);
-    if (data.ai_client_audio_base64) {
-      $('audio-player').src = `data:audio/mpeg;base64,${data.ai_client_audio_base64}`;
-      $('audio-player').play().catch(() => {});
-    }
+    if (data.audio_error) addBubble('system', 'Озвучка временно недоступна — прочитайте ответ клиента.');
+    else if (data.ai_client_audio_base64) playTurnAudio(`data:audio/mpeg;base64,${data.ai_client_audio_base64}`);
   } catch (err) {
     placeholder.remove();
-    addBubble('system', 'Ошибка: ' + err.message);
+    const recognised = err.data && err.data.manager_text;
+    await turnFailed(err, recognised, recognised ? `Распознано: «${recognised}» — текст в поле ввода, нажмите «Повторить».` : '');
   } finally {
     setBusy(false);
   }
@@ -290,6 +335,9 @@ $('product-filter').addEventListener('change', renderCards);
 $('difficulty-filter').addEventListener('change', renderCards);
 $('topic-filter').addEventListener('change', renderCards);
 $('send-btn').addEventListener('click', sendTurn);
+$('audio-player').addEventListener('error', () => {
+  if ($('audio-player').getAttribute('src')) addBubble('system', 'Озвучка временно недоступна — прочитайте ответ клиента.');
+});
 $('text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendTurn(); });
 $('finish-btn').addEventListener('click', finishSession);
 $('repeat-btn').addEventListener('click', () => startSession(currentScenarioId));
