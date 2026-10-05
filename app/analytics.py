@@ -33,9 +33,25 @@ def criterion_names() -> dict[str, str]:
     return {c["id"]: c["name"] for r in list_rubrics() for c in r["criteria"]}
 
 
-async def _scenario_titles(db: AsyncSession) -> dict[tuple[str, int], str]:
+async def _scenario_versions(db: AsyncSession) -> dict[tuple[str, int], dict]:
     rows = (await db.execute(select(ScenarioVersion.scenario_id, ScenarioVersion.version, ScenarioVersion.data))).all()
-    return {(sid, v): (data or {}).get("title") or sid for sid, v, data in rows}
+    return {(sid, v): data or {} for sid, v, data in rows}
+
+
+def bound_scenario(session: SessionModel, versions: dict[tuple[str, int], dict], scenarios: dict[str, Scenario]) -> dict:
+    """Title, product and difficulty of the scenario version the session was
+    bound to — never the scenario's current version, so publishing a new
+    version can't reclassify history. The current scenario row is only a
+    fallback for a session whose version record doesn't exist."""
+    data = versions.get((session.scenario_id, session.scenario_version or 1))
+    if data:
+        return {"title": data.get("title") or session.scenario_id, "product_id": data.get("product_id"), "difficulty": data.get("difficulty")}
+    scenario = scenarios.get(session.scenario_id)
+    return {
+        "title": (scenario.title if scenario else None) or session.scenario_id,
+        "product_id": scenario.product_id if scenario else None,
+        "difficulty": scenario.difficulty if scenario else None,
+    }
 
 
 async def session_rows(db: AsyncSession, user_ids: list[str]) -> list[dict]:
@@ -50,21 +66,21 @@ async def session_rows(db: AsyncSession, user_ids: list[str]) -> list[dict]:
     scores = {sc.session_id: sc for sc in (await db.execute(select(Score).where(Score.session_id.in_(ids)))).scalars()}
     scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
     products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
-    titles = await _scenario_titles(db)
+    versions = await _scenario_versions(db)
     rows = []
     for s in sessions:
         scenario = scenarios.get(s.scenario_id)
-        version = s.scenario_version or 1
+        bound = bound_scenario(s, versions, scenarios)
         score = scores.get(s.id)
         rows.append(
             {
                 "id": s.id,
                 "scenario_id": s.scenario_id,
-                "scenario_version": version,
-                "title": titles.get((s.scenario_id, version), s.scenario_id),
-                "product_id": scenario.product_id if scenario else None,
-                "product_name": products.get(scenario.product_id) if scenario else None,
-                "difficulty": scenario.difficulty if scenario else None,
+                "scenario_version": s.scenario_version or 1,
+                "title": bound["title"],
+                "product_id": bound["product_id"],
+                "product_name": products.get(bound["product_id"]),
+                "difficulty": bound["difficulty"],
                 "kb_version": s.kb_version,
                 "status": s.status,
                 "started_at": _aware(s.started_at).isoformat(),
@@ -99,14 +115,14 @@ async def build_dashboard(
         session_query = session_query.where(SessionModel.user_id.in_([m.id for m in managers]))
     scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
     products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
+    versions = await _scenario_versions(db)
 
     sessions = []
     for s in (await db.execute(session_query)).scalars():
         started = _aware(s.started_at)
         if since and started < since:
             continue
-        scenario = scenarios.get(s.scenario_id)
-        pid = scenario.product_id if scenario else None
+        pid = bound_scenario(s, versions, scenarios)["product_id"]  # the session's bound version
         if product_id and pid != product_id:
             continue
         sessions.append((s, started, pid))
