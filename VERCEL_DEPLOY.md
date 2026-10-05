@@ -25,14 +25,11 @@ pieces that make that work:
 - Functions run on **fluid compute with a 300s limit** (project default,
   confirmed on the deployment: `functionTimeout: 300`).
 - **Verified live (2026-10-05):** login, admin, dashboard, text turn (DeepSeek),
-  TTS audio (ElevenLabs), full voice turn (Deepgram → DeepSeek → ElevenLabs).
-- **Known bad:** `ANTHROPIC_API_KEY` is rejected by the API (401), so scoring
-  ends in `finish_error`. Set a valid key and redeploy:
-  ```
-  vercel env rm ANTHROPIC_API_KEY production --yes
-  printf '%s' 'sk-ant-...' | vercel env add ANTHROPIC_API_KEY production
-  vercel --prod --archive=tgz
-  ```
+  TTS audio (ElevenLabs), full voice turn (Deepgram → DeepSeek → ElevenLabs),
+  and Claude scoring end to end (~37s for a short session).
+- The `ANTHROPIC_API_KEY` in the local `.env` / `.env.local` files is invalid
+  (401) — the production value is a different, working key. Update the local
+  copy before running the gate test against Claude.
 
 ## Upgrading the live deployment to users/roles (Block 4)
 
