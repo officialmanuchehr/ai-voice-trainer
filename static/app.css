@@ -76,6 +76,7 @@ h3 { font-size: 0.98rem; margin: 18px 0 8px; }
 .topbar nav a { text-decoration: none; color: var(--muted); padding: 4px 0; }
 .topbar nav a.active { color: var(--text); border-bottom: 2px solid var(--accent); }
 .topbar .who { color: var(--muted); font-size: 0.88rem; }
+.theme-select { padding: 4px 8px; font-size: 0.82rem; }
 
 .page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; display: flex; flex-direction: column; gap: 16px; }
 .page.narrow { max-width: 780px; }
@@ -120,6 +121,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip.easy { color: var(--good); border-color: var(--good); }
 .chip.medium { color: var(--warning); border-color: var(--warning); }
 .chip.hard { color: var(--critical); border-color: var(--critical); }
+.chip.topic { color: var(--accent); border-color: var(--accent); white-space: normal; }
 
 .error-box { background: var(--critical-bg); border: 1px solid var(--critical); border-radius: 8px; padding: 10px; font-size: 0.88rem; }
 .note-box { background: var(--warning-bg); border: 1px solid var(--warning); border-radius: 8px; padding: 10px; font-size: 0.88rem; }
@@ -188,6 +190,7 @@ ul.plain { margin: 0; padding-left: 18px; }
 .weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 14px; }
 .weights label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.85rem; }
 .weights input { width: 70px; }
+.weights input[type=checkbox] { width: auto; }
 .versions { display: flex; gap: 6px; flex-wrap: wrap; }
 dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); width: min(860px, 94vw); max-height: 90vh; padding: 18px; }
 dialog::backdrop { background: rgba(0,0,0,0.4); }

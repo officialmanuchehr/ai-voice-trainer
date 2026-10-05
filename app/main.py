@@ -18,7 +18,7 @@ from app.auth import BasicAuthMiddleware
 from app.client_generator import briefing, generate_client
 from app.config import settings
 from app.constants import STT_VOCABULARY
-from app.content import published_kb, session_content
+from app.content import published_kb, session_content, topic_list
 from app.database import Base, SessionLocal, engine
 from app.models import ClaimCheck, Feedback, KnowledgeBase, Product, Scenario, ScenarioVersion, Score, User
 from app.models import Session as SessionModel
@@ -206,6 +206,7 @@ async def list_scenarios(user: User = Depends(require_roles(*TRAINEE_ROLES))):
                     "difficulty": s.difficulty,
                     "goal": s.goal,
                     "learning_goal": (data.get("config") or {}).get("learning_goal", ""),
+                    "topics": topic_list(data.get("topics")),
                     "briefing": briefing(s.client_profile),
                 }
             )

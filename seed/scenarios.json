@@ -5,6 +5,10 @@
       "product_id": "merchant_onboarding",
       "difficulty": "medium",
       "goal": "Подключить приём оплат через Эсхата Онлайн и оформить бесплатную карту, не потеряв клиента на возражениях.",
+      "topics": [
+        "objections",
+        "competitor_switch"
+      ],
       "rubric_id": "rubric_sales_100",
       "client_profile": {
         "business_type": "торговая точка (продукты, розница)",
@@ -54,6 +58,10 @@
       "difficulty": "easy",
       "title": "Торговая точка: открытый владелец",
       "goal": "Подключить приём оплат через Эсхата Онлайн и оформить бесплатную карту.",
+      "topics": [
+        "conversation_structure",
+        "next_step"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -96,6 +104,11 @@
       "difficulty": "hard",
       "title": "Торговая точка: раздражённый владелец с кошельком конкурента",
       "goal": "Подключить приём оплат через Эсхата Онлайн, не нарушив ни одного ограничения базы знаний.",
+      "topics": [
+        "difficult_client",
+        "competitor_switch",
+        "pressure_honesty"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -147,6 +160,10 @@
       "difficulty": "easy",
       "title": "РКО: новый ИП открывает счёт",
       "goal": "Выявить потребности нового предпринимателя и договориться об открытии расчётного счёта.",
+      "topics": [
+        "needs_discovery",
+        "next_step"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -194,6 +211,11 @@
       "difficulty": "medium",
       "title": "РКО: торговая компания в другом банке",
       "goal": "Выяснить, что не устраивает клиента в текущих расчётах, и договориться о персональном расчёте тарифа.",
+      "topics": [
+        "needs_discovery",
+        "competitor_switch",
+        "objections"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -251,6 +273,11 @@
       "difficulty": "hard",
       "title": "РКО: недовольный клиент требует цифры",
       "goal": "Сохранить разговор и договориться о расчёте, не назвав ни одного тарифа не из базы знаний.",
+      "topics": [
+        "pressure_honesty",
+        "difficult_client",
+        "competitor_switch"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -304,6 +331,10 @@
       "difficulty": "easy",
       "title": "Зарплатный проект: компания платит наличными",
       "goal": "Договориться о встрече с бухгалтерией для обсуждения зарплатного проекта.",
+      "topics": [
+        "needs_discovery",
+        "next_step"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -348,6 +379,10 @@
       "difficulty": "medium",
       "title": "Зарплатный проект: бухгалтер против изменений",
       "goal": "Выявить, что мешает переходу на зарплатный проект, и договориться о встрече с бухгалтером.",
+      "topics": [
+        "objections",
+        "next_step"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -398,6 +433,10 @@
       "difficulty": "hard",
       "title": "Зарплатный проект: переманивание из другого банка",
       "goal": "Разобраться в недовольстве текущим зарплатным проектом и договориться о расчёте условий — без обещаний льгот сотрудникам.",
+      "topics": [
+        "competitor_switch",
+        "pressure_honesty"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -448,6 +487,10 @@
       "difficulty": "easy",
       "title": "Кредит: закупка товара перед сезоном",
       "goal": "Выяснить цель и сроки потребности в финансировании и договориться о подаче заявки.",
+      "topics": [
+        "needs_discovery",
+        "next_step"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -494,6 +537,10 @@
       "difficulty": "medium",
       "title": "Кредит: кассовый разрыв у сезонного бизнеса",
       "goal": "Разобраться в денежном потоке клиента и договориться о встрече с кредитным специалистом.",
+      "topics": [
+        "needs_discovery",
+        "objections"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {
@@ -549,6 +596,10 @@
       "difficulty": "hard",
       "title": "Кредит: клиент требует гарантию одобрения",
       "goal": "Договориться о подаче заявки, не пообещав одобрения, ставку или кредит без залога.",
+      "topics": [
+        "pressure_honesty",
+        "objections"
+      ],
       "rubric_id": "rubric_sales_100",
       "seed_status": "draft",
       "config": {

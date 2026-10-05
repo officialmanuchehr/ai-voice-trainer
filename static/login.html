@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Вход — AI Voice Trainer</title>
 <link rel="stylesheet" href="/static/app.css" />
+<script src="/static/theme.js"></script>
 </head>
 <body>
 <div class="page" style="max-width:380px; padding-top:12vh">
@@ -16,9 +17,11 @@
     <button type="submit" style="width:100%">Войти</button>
     <p id="error" class="small flag-text"></p>
   </form>
+  <div class="row" id="theme-row" style="justify-content:center"></div>
 </div>
 <script src="/static/app.js"></script>
 <script>
+document.getElementById('theme-row').append(themeSelect());
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errorEl = document.getElementById('error');

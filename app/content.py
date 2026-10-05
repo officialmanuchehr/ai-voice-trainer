@@ -11,6 +11,22 @@ from app.seed_loader import list_rubrics
 
 DIFFICULTIES = ("easy", "medium", "hard")
 
+# Training topics a scenario can be tagged with (catalogue filter, admin).
+# A fixed list rather than free text so every page groups by the same ids.
+TOPICS = {
+    "conversation_structure": "Структура разговора",
+    "needs_discovery": "Выявление потребностей",
+    "objections": "Работа с возражениями",
+    "competitor_switch": "Переход из другого банка",
+    "pressure_honesty": "Давление клиента и честные условия",
+    "difficult_client": "Сложный клиент",
+    "next_step": "Договорённость о следующем шаге",
+}
+
+
+def topic_list(ids: list[str] | None) -> list[dict]:
+    return [{"id": t, "name": TOPICS[t]} for t in ids or [] if t in TOPICS]
+
 _TRANSITIONS = {
     "draft": {"approved", "archived"},
     "approved": {"published", "draft", "archived"},
@@ -106,6 +122,13 @@ def validate_scenario_content(content: dict, product_ids: set[str]) -> dict:
     if not isinstance(variants, dict) or not all(isinstance(v, list) and v for v in variants.values()):
         raise _bad("client_profile.variants: ожидается {поле: [варианты]}")
 
+    topics = content.get("topics") or []
+    if not isinstance(topics, list) or not all(isinstance(t, str) for t in topics):
+        raise _bad("topics: ожидается список тем")
+    unknown = [t for t in topics if t not in TOPICS]
+    if unknown:
+        raise _bad(f"неизвестная тема: {', '.join(unknown)}")
+
     config = content.get("config") or {}
     if not isinstance(config, dict):
         raise _bad("config должен быть объектом")
@@ -131,6 +154,7 @@ def validate_scenario_content(content: dict, product_ids: set[str]) -> dict:
         "goal": content["goal"].strip(),
         "rubric_id": content["rubric_id"],
         "client_profile": profile,
+        "topics": list(dict.fromkeys(topics)),
         "config": {
             "learning_goal": str(config.get("learning_goal") or "").strip(),
             "criteria_weights": clean_weights,

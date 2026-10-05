@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.audit import audit
-from app.content import DIFFICULTIES, check_transition, published_kb, validate_kb_content, validate_scenario_content
+from app.content import DIFFICULTIES, TOPICS, check_transition, published_kb, validate_kb_content, validate_scenario_content
 from app.database import SessionLocal
 from app.models import CONTENT_STATUSES, AuditLog, KnowledgeBase, Product, Scenario, ScenarioVersion, Team, User
 from app.security import (
@@ -58,6 +58,7 @@ async def meta(user: User = Depends(_content_viewer)):
         "roles": ROLES,
         "statuses": CONTENT_STATUSES,
         "difficulties": DIFFICULTIES,
+        "topics": TOPICS,
         "rubrics": [
             {"id": r["id"], "title": r["title"], "criteria": [{"id": c["id"], "name": c["name"], "weight": c["weight"]} for c in r["criteria"]]}
             for r in list_rubrics()
@@ -106,6 +107,7 @@ async def list_scenarios(user: User = Depends(_content_viewer)):
                 "title": latest.get("title") or s.title or s.id,
                 "product_id": latest.get("product_id", s.product_id),
                 "difficulty": latest.get("difficulty", s.difficulty),
+                "topics": latest.get("topics", []),
                 "published_version": s.published_version,
                 "versions": [_version_meta(v) for v in own],
             }

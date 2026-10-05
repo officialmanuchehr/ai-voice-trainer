@@ -29,6 +29,7 @@ def scenario_content(scenario: dict) -> dict:
         "goal": scenario["goal"],
         "rubric_id": scenario["rubric_id"],
         "client_profile": scenario["client_profile"],
+        "topics": scenario.get("topics") or [],
         "config": scenario.get("config") or {},
     }
 
@@ -114,9 +115,22 @@ async def load_seed(db: AsyncSession) -> None:
             db.add(version)
             if status == "published":
                 sync_published_copy(row, version)
+        else:
+            await _backfill_topics(db, row.id, content["topics"])
 
     await _seed_users(db)
     await db.commit()
+
+
+async def _backfill_topics(db: AsyncSession, scenario_id: str, topics: list[str]) -> None:
+    """One-time migration for versions stored before scenarios had topics.
+    Topics are catalogue tags, not session content, so tagging an approved or
+    published version doesn't change what managers train on. A version that
+    already has the key (even an empty list set in the admin) is left alone."""
+    result = await db.execute(select(ScenarioVersion).where(ScenarioVersion.scenario_id == scenario_id))
+    for version in result.scalars():
+        if "topics" not in version.data:
+            version.data = {**version.data, "topics": topics}
 
 
 async def _seed_users(db: AsyncSession) -> None:

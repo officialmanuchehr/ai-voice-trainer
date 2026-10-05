@@ -62,6 +62,7 @@ async function initPage(active, requiredFlag) {
     <nav>${links.map(([k, href, label]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
     <span class="who">${esc(me.full_name || me.username)} · ${esc(me.role_name)}${me.team_name ? ' · ' + esc(me.team_name) : ''}</span>
     <button class="secondary small" id="logout-btn">Выйти</button>`;
+  bar.insertBefore(themeSelect(), bar.querySelector('#logout-btn'));
   document.body.prepend(bar);
   document.getElementById('logout-btn').addEventListener('click', async () => {
     await fetch('/auth/logout', { method: 'POST' });

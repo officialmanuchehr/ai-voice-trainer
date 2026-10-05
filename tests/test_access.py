@@ -260,3 +260,74 @@ def test_slow_scoring_ends_as_retryable_error(server, monkeypatch):
     monkeypatch.undo()
     assert manager.post(f"/sessions/{session_id}/finish").json()["status"] == "scoring"
     assert manager.post(f"/sessions/{session_id}/score-run").json()["status"] == "finished"
+
+
+# ------------------------------------------------------------ topics, themes
+
+
+def test_catalog_returns_topics(server):
+    scenario = login(server, "manager1").get("/scenarios").json()[0]
+    assert {"id": "objections", "name": "Работа с возражениями"} in scenario["topics"]
+
+
+def test_admin_meta_lists_topics(server):
+    topics = login(server, "trainer1").get("/admin/meta").json()["topics"]
+    assert topics["pressure_honesty"] == "Давление клиента и честные условия"
+
+
+def test_every_seed_scenario_is_tagged(server):
+    for scenario in login(server, "admin").get("/admin/scenarios").json():
+        assert scenario["topics"], scenario["id"]
+
+
+def _draft_data(client, scenario_id):
+    item = next(s for s in client.get("/admin/scenarios").json() if s["id"] == scenario_id)
+    version = item["versions"][-1]["version"]
+    return client.get(f"/admin/scenarios/{scenario_id}/versions/{version}").json()["data"]
+
+
+def test_scenario_topics_validated_and_saved(server):
+    trainer = login(server, "trainer1")
+    data = _draft_data(trainer, "scn_loan_easy_01")
+    bad = trainer.put("/admin/scenarios/scn_loan_easy_01", json={"data": {**data, "topics": ["no_such_topic"]}})
+    assert bad.status_code == 422
+    ok = trainer.put("/admin/scenarios/scn_loan_easy_01", json={"data": {**data, "topics": ["objections", "objections"]}})
+    assert ok.status_code == 200
+    assert _draft_data(trainer, "scn_loan_easy_01")["topics"] == ["objections"]
+
+
+def test_topics_backfilled_for_old_versions_only(server):
+    """Versions stored before topics existed get the seed tags on the next
+    init_db; a version whose topics were set (even emptied) is left alone."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.main import init_db
+    from app.models import ScenarioVersion
+
+    async def strip_and_reinit():
+        async with SessionLocal() as db:
+            rows = (await db.execute(select(ScenarioVersion).where(ScenarioVersion.scenario_id.in_(
+                [SCENARIO, "scn_rko_easy_01"])))).scalars().all()
+            for row in rows:
+                if row.scenario_id == SCENARIO:
+                    row.data = {k: v for k, v in row.data.items() if k != "topics"}
+                else:
+                    row.data = {**row.data, "topics": []}
+            await db.commit()
+        await init_db()
+        async with SessionLocal() as db:
+            rows = (await db.execute(select(ScenarioVersion))).scalars().all()
+            return {r.scenario_id: r.data.get("topics") for r in rows}
+
+    topics = asyncio.run(strip_and_reinit())
+    assert topics[SCENARIO] == ["objections", "competitor_switch"]
+    assert topics["scn_rko_easy_01"] == []
+
+
+def test_theme_script_served(server):
+    response = server.get("/static/theme.js")
+    assert response.status_code == 200
+    assert "applyTheme" in response.text

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Тренировка — AI Voice Trainer</title>
 <link rel="stylesheet" href="/static/app.css" />
+<script src="/static/theme.js"></script>
 </head>
 <body>
 <div class="page narrow">
@@ -15,6 +16,7 @@
       <div class="row">
         <h1 style="margin:0">Выберите тренировку</h1><span class="spacer"></span>
         <select id="product-filter"><option value="">Все продукты</option></select>
+        <select id="topic-filter"><option value="">Все темы</option></select>
         <select id="difficulty-filter">
           <option value="">Любая сложность</option>
           <option value="easy">Лёгкий</option><option value="medium">Средний</option><option value="hard">Сложный</option>
@@ -96,7 +98,9 @@ function setBusy(value, message) {
 function renderCards() {
   const product = $('product-filter').value;
   const difficulty = $('difficulty-filter').value;
-  const items = scenarios.filter((s) => (!product || s.product_id === product) && (!difficulty || s.difficulty === difficulty));
+  const topic = $('topic-filter').value;
+  const items = scenarios.filter((s) => (!product || s.product_id === product) && (!difficulty || s.difficulty === difficulty)
+    && (!topic || s.topics.some((t) => t.id === topic)));
   $('cards').innerHTML = items.map((s) => `
     <div class="card">
       <div class="row"><span class="chip ${esc(s.difficulty)}">${esc(DIFFICULTY[s.difficulty] || s.difficulty)}</span>
@@ -104,6 +108,7 @@ function renderCards() {
       <div class="title">${esc(s.title)}</div>
       <div class="small">${esc(s.goal)}</div>
       ${s.learning_goal ? `<div class="small muted">Учебная цель: ${esc(s.learning_goal)}</div>` : ''}
+      ${s.topics.length ? `<div class="row">${s.topics.map((t) => `<span class="chip topic">${esc(t.name)}</span>`).join('')}</div>` : ''}
       <div class="spacer"></div>
       <button data-start="${esc(s.id)}">Начать</button>
     </div>`).join('') || '<p class="muted">Нет опубликованных сценариев по этому фильтру.</p>';
@@ -283,6 +288,7 @@ document.addEventListener('click', (e) => {
 });
 $('product-filter').addEventListener('change', renderCards);
 $('difficulty-filter').addEventListener('change', renderCards);
+$('topic-filter').addEventListener('change', renderCards);
 $('send-btn').addEventListener('click', sendTurn);
 $('text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendTurn(); });
 $('finish-btn').addEventListener('click', finishSession);
@@ -304,6 +310,8 @@ mic.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); }
   scenarios = await api('/scenarios');
   const products = [...new Map(scenarios.map((s) => [s.product_id, s.product_name])).entries()];
   $('product-filter').innerHTML += products.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
+  const topics = [...new Map(scenarios.flatMap((s) => s.topics).map((t) => [t.id, t.name])).entries()];
+  $('topic-filter').innerHTML += topics.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
   renderCards();
   loadHistory();
   const repeat = new URLSearchParams(location.search).get('repeat');

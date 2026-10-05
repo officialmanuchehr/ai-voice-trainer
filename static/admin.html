@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Админка — AI Voice Trainer</title>
 <link rel="stylesheet" href="/static/app.css" />
+<script src="/static/theme.js"></script>
 </head>
 <body>
 <div class="page">
@@ -100,11 +101,12 @@ function statusButtons(status, perms) {
 async function loadScenarios() {
   const items = await api('/admin/scenarios');
   const productName = Object.fromEntries(meta.products.map((p) => [p.id, p.name]));
-  $('scenario-table').innerHTML = `<tr><th>Сценарий</th><th>Продукт</th><th>Сложность</th><th>Версии</th></tr>` +
+  $('scenario-table').innerHTML = `<tr><th>Сценарий</th><th>Продукт</th><th>Сложность</th><th>Темы</th><th>Версии</th></tr>` +
     items.map((s) => `<tr>
       <td>${esc(s.title)}<div class="muted small">${esc(s.id)}${s.published_version ? ` · в работе v${s.published_version}` : ' · не опубликован'}</div></td>
       <td>${esc(productName[s.product_id] || s.product_id)}</td>
       <td><span class="chip ${esc(s.difficulty)}">${esc(DIFFICULTY[s.difficulty] || s.difficulty)}</span></td>
+      <td><div class="versions">${(s.topics || []).map((t) => `<span class="chip topic">${esc(meta.topics[t] || t)}</span>`).join('') || '<span class="muted">—</span>'}</div></td>
       <td><div class="versions">${s.versions.map((v) => `<a href="#" data-scn="${esc(s.id)}" data-ver="${v.version}" title="${esc(v.author || '')} · ${fmtDate(v.updated_at || v.created_at)}">${statusChip(v, 'v' + v.version)}</a>`).join('')}</div></td>
     </tr>`).join('');
 }
@@ -121,6 +123,9 @@ function scenarioForm(data, editable) {
       <label class="field">Сложность<select id="s-difficulty" ${dis}>${meta.difficulties.map((d) => `<option value="${d}" ${d === data.difficulty ? 'selected' : ''}>${DIFFICULTY[d]}</option>`).join('')}</select></label>
       <label class="field">Рубрика<select id="s-rubric" ${dis}>${meta.rubrics.map((r) => `<option value="${esc(r.id)}" ${r.id === rubric.id ? 'selected' : ''}>${esc(r.title)}</option>`).join('')}</select></label>
     </div>
+    <div class="field">Темы тренировки
+      <div class="weights">${Object.entries(meta.topics).map(([id, name]) => `<label style="justify-content:flex-start">
+        <input type="checkbox" data-topic="${esc(id)}" ${(data.topics || []).includes(id) ? 'checked' : ''} ${dis}/>${esc(name)}</label>`).join('')}</div></div>
     <label class="field">Цель разговора (видит менеджер)<textarea id="s-goal" ${dis}>${esc(data.goal || '')}</textarea></label>
     <label class="field">Учебная цель<input type="text" id="s-learning" value="${esc(cfg.learning_goal || '')}" ${dis}/></label>
     <label class="field">Профиль клиента (JSON). Поля: business_type, industry, company_size, turnover, employees, owner, current_bank, current_products, business_context, current_situation, explicit_needs, pain, hidden_need, financial_literacy, style, emotion, urgency, decision_criteria, attitude_to_bank, trust_level, objections; <b>variants</b> — {поле: [варианты]} для генерации разных клиентов. Продуктовые условия сюда не пишутся — только в базу знаний.
@@ -145,6 +150,7 @@ function readScenarioForm() {
   return {
     title: $('s-title').value, product_id: $('s-product').value, difficulty: $('s-difficulty').value,
     rubric_id: $('s-rubric').value, goal: $('s-goal').value, client_profile: profile,
+    topics: [...document.querySelectorAll('[data-topic]:checked')].map((i) => i.dataset.topic),
     config: { learning_goal: $('s-learning').value, criteria_weights: weights, good_examples: lines('s-good'), feedback_hints: lines('s-hints') },
   };
 }
