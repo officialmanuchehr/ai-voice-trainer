@@ -24,7 +24,7 @@ NAV = json.loads((STATIC / "js" / "nav.json").read_text(encoding="utf-8"))
 NAV_ITEMS = [item for group in NAV["groups"] for item in group["items"]]
 SHELL_PAGES = {"/": "training", "/dashboard": "dashboard", "/admin": "admin", "/session": "session", "/overview": "overview", "/progress": "progress", "/history": "history", "/team": "team", "/manager": "manager"}
 ALL_PAGES = [*SHELL_PAGES, "/login"]
-SHARED_VIEWS = {"/static/js/progress-view.js"}
+SHARED_VIEWS = {"/static/js/progress-view.js", "/static/js/content-model.js", "/static/js/content-editor.js", "/static/js/scenario-editor.js", "/static/js/kb-editor.js"}
 
 
 # ------------------------------------------------------------ navigation

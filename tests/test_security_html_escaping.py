@@ -150,16 +150,21 @@ def test_every_attribute_interpolation_is_escaped_or_known_safe():
 
 
 def test_the_previously_vulnerable_sinks_now_go_through_the_fixed_esc():
-    admin = (STATIC / "js" / "pages" / "admin.js").read_text(encoding="utf-8")
+    # Phase 7 replaced the admin JSON dialogs with structured editors: every
+    # stored value reaches the page through FormBinder's escaped controls.
+    editor = (STATIC / "js" / "content-editor.js").read_text(encoding="utf-8")
+    kb = (STATIC / "js" / "kb-editor.js").read_text(encoding="utf-8")
+    scenario = (STATIC / "js" / "scenario-editor.js").read_text(encoding="utf-8")
     shell = (STATIC / "js" / "shell.js").read_text(encoding="utf-8")
     for needle in (
-        'value="${esc(data.title || \'\')}"',          # scenario title
-        'value="${esc(cfg.learning_goal || \'\')}"',   # learning goal
-        'value="${esc(v.notes || \'\')}"',             # KB notes
-        'data-kbver="${esc(v.version)}"',             # KB version
-        'title="${esc(v.author || \'\')}"',           # author username
+        'value="${esc(value)}"',                     # every text input (titles, ids, notes …)
+        '>${esc(value)}</textarea>',                 # every textarea (facts, responses, notes …)
+        '<option value="${esc(value)}"',             # select options
     ):
-        assert needle in admin, needle
+        assert needle in editor, needle
+    assert "v${esc(ver.version)}" in kb and "esc(ver.author || '—')" in kb   # KB version / author
+    assert "esc(ver.notes || '—')" in kb                                        # KB notes
+    assert "esc(st.meta.author || '—')" in scenario                             # scenario author
     assert 'title="${esc(me.full_name || me.username)}' in shell  # full name
     assert "esc(me.team_name)" in shell                            # team name
 

@@ -48,6 +48,16 @@ _PROFILE_LABELS = {
     "trust_level": "уровень доверия к банку и менеджеру",
 }
 
+# Profile fields that hold a list of strings rather than one string.
+PROFILE_LIST_FIELDS = {"objections", "decision_criteria", "current_products"}
+
+
+def profile_field_labels() -> dict[str, str]:
+    """Every client-profile field the AI client reads (incl. objections),
+    with a readable label — for the content editor."""
+    return {**_PROFILE_LABELS, "objections": "типичные возражения клиента"}
+
+
 DIFFICULTY_RULES = {
     "easy": (
         "ЛЁГКИЙ. Ты в целом открыт к разговору и вежлив. Выдвигаешь не больше одного-двух мягких "

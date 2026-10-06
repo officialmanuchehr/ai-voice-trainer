@@ -29,19 +29,21 @@
       <div class="page">
 
         <section id="tab-scenarios" class="hidden">
-          <div class="panel">
+          <div class="panel" id="scenario-list">
             <div class="section-head"><h2>Все сценарии</h2><span class="spacer"></span><button type="button" id="new-scenario" class="hidden">+ Новый сценарий</button></div>
             <p class="section-note">Порядок: черновик → утверждено (продукт / комплаенс) → опубликовано (обучение). Утверждённые и опубликованные версии не редактируются — правка создаёт новую версию-черновик, опубликованная продолжает работать.</p>
-            <div class="table-wrap"><table id="scenario-table"></table></div>
+            <div class="table-wrap"><table id="scenario-table" class="stack-table"></table></div>
           </div>
+          <div id="scenario-editor" class="hidden stack"></div>
         </section>
 
         <section id="tab-kb" class="hidden">
-          <div class="panel">
+          <div class="panel" id="kb-list">
             <div class="section-head"><h2>Продукты и версии</h2><span class="spacer"></span><button type="button" id="new-product" class="hidden">+ Новый продукт</button></div>
-            <p class="section-note">Порядок: черновик (продукт) → утверждено (комплаенс) → опубликовано (продукт). Новые тренировки используют опубликованную версию; прошедшие остаются привязаны к своей.</p>
-            <div class="table-wrap"><table id="kb-table"></table></div>
+            <p class="section-note">Порядок: черновик (продукт / комплаенс) → утверждено (комплаенс) → опубликовано (продукт). Новые тренировки используют опубликованную версию; прошедшие остаются привязаны к своей. Версии с пометками «требует проверки» нельзя утвердить или опубликовать.</p>
+            <div class="table-wrap"><table id="kb-table" class="stack-table"></table></div>
           </div>
+          <div id="kb-editor" class="hidden stack"></div>
         </section>
 
         <section id="tab-users" class="hidden">
@@ -92,6 +94,10 @@
 <script src="/static/app.js"></script>
 <script src="/static/js/ui.js"></script>
 <script src="/static/js/shell.js"></script>
+<script src="/static/js/content-model.js"></script>
+<script src="/static/js/content-editor.js"></script>
+<script src="/static/js/scenario-editor.js"></script>
+<script src="/static/js/kb-editor.js"></script>
 <script src="/static/js/pages/admin.js"></script>
 </body>
 </html>

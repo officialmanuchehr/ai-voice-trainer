@@ -40,6 +40,8 @@ from app.security import (
     require_roles,
     user_public,
 )
+from app.client_generator import BRIEFING_FIELDS
+from app.prompts import PROFILE_LIST_FIELDS, profile_field_labels
 from app.seed_loader import list_rubrics, sync_published_copy
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -72,6 +74,12 @@ async def meta(user: User = Depends(_content_viewer)):
         "rubrics": [
             {"id": r["id"], "title": r["title"], "criteria": [{"id": c["id"], "name": c["name"], "weight": c["weight"]} for c in r["criteria"]]}
             for r in list_rubrics()
+        ],
+        # Client-profile fields the AI client understands, with the manager
+        # visibility used by the briefing (editor labels; not a schema).
+        "profile_fields": [
+            {"id": key, "label": label, "briefing": key in BRIEFING_FIELDS, "list": key in PROFILE_LIST_FIELDS}
+            for key, label in profile_field_labels().items()
         ],
         "permissions": {
             "scenario_edit": user.role in SCENARIO_EDIT_ROLES,
@@ -148,6 +156,9 @@ async def _product_ids(db) -> set[str]:
 
 class ScenarioBody(BaseModel):
     data: dict
+    # The version the editor started from. When given and a newer draft
+    # exists, the edit is refused instead of silently replacing that draft.
+    base_version: int | None = None
 
 
 @router.post("/scenarios")
@@ -187,6 +198,16 @@ async def edit_scenario(scenario_id: str, body: ScenarioBody, user: User = Depen
             .where(ScenarioVersion.scenario_id == scenario_id)
             .order_by(ScenarioVersion.version.desc())
         )
+        if (
+            body.base_version is not None
+            and latest is not None
+            and latest.status == "draft"
+            and latest.version != body.base_version
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"уже есть черновик v{latest.version} — откройте его, чтобы не потерять изменения",
+            )
         if latest is not None and latest.status == "draft":
             latest.data = content
             latest.author = user.username
@@ -267,7 +288,10 @@ async def list_kb(user: User = Depends(_content_viewer)):
             "product_id": p.id,
             "name": p.name,
             "segment": p.segment,
-            "versions": [{**_version_meta(v), "notes": v.notes} for v in by_product.get(p.id, [])],
+            "versions": [
+                {**_version_meta(v), "notes": v.notes, "review_blockers": len(kb_review_blockers(v.data or {}))}
+                for v in by_product.get(p.id, [])
+            ],
         }
         for p in products
     ]
@@ -350,7 +374,8 @@ async def edit_kb_version(product_id: str, version: str, body: KbEdit, user: Use
         if kb.status != "draft":
             raise HTTPException(status_code=409, detail="редактировать можно только черновик — создайте новую версию")
         kb.data = validate_kb_content(body.data, product_id)
-        kb.notes = body.notes
+        if "notes" in body.model_fields_set:  # omitted → keep the existing notes
+            kb.notes = body.notes
         kb.author = user.username
         kb.updated_at = _now()
         audit(db, user, "kb.edit_draft", "knowledge_base", f"{product_id}@{version}")
