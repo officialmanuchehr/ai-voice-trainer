@@ -10,12 +10,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   errorEl.classList.add('hidden');
   setLoading(button, true);
   try {
-    await api('/auth/login', {
+    const user = await api('/auth/login', {
       method: 'POST',
       json: { username: document.getElementById('username').value, password: document.getElementById('password').value },
     });
     const next = new URLSearchParams(location.search).get('next');
-    location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+    // Managers land on their overview; other roles keep the existing default.
+    const home = user.role === 'manager' ? '/overview' : '/';
+    location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : home;
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.classList.remove('hidden');

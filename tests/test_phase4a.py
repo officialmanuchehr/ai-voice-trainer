@@ -22,7 +22,7 @@ import app.main as main
 STATIC = Path(__file__).resolve().parent.parent / "static"
 NAV = json.loads((STATIC / "js" / "nav.json").read_text(encoding="utf-8"))
 NAV_ITEMS = [item for group in NAV["groups"] for item in group["items"]]
-SHELL_PAGES = {"/": "training", "/dashboard": "dashboard", "/admin": "admin", "/session": "session"}
+SHELL_PAGES = {"/": "training", "/dashboard": "dashboard", "/admin": "admin", "/session": "session", "/overview": "overview", "/progress": "progress", "/history": "history"}
 ALL_PAGES = [*SHELL_PAGES, "/login"]
 
 
@@ -47,7 +47,7 @@ def test_every_role_gets_at_least_one_destination_and_managers_see_no_content_to
     for role in ALL_ROLES_USERS:
         assert any(role in item["roles"] for item in NAV_ITEMS), role
     manager_keys = {item["key"] for item in NAV_ITEMS if "manager" in item["roles"]}
-    assert manager_keys == {"train", "history"}
+    assert manager_keys == {"overview", "train", "progress", "history"}
 
 
 def test_nav_targets_are_existing_pages(server):
@@ -57,17 +57,17 @@ def test_nav_targets_are_existing_pages(server):
 
 
 def test_pages_only_activate_known_nav_keys():
-    """Every key a page highlights (setActiveNav literals, admin sections)
+    """Every key a page highlights (setActiveNav/initPage literals, admin sections)
     exists in nav.json, so a highlighted item is never silently missing."""
     keys = {item["key"] for item in NAV_ITEMS}
     roles = set(ALL_ROLES_USERS)
     used = set()
     for js in (STATIC / "js" / "pages").glob("*.js"):
-        for argument in re.findall(r"setActiveNav\(([^;]+?)\);", js.read_text(encoding="utf-8")):
+        for argument in map("".join, re.findall(r"setActiveNav\(([^;]+?)\);|initPage\(('[a-z_]+')", js.read_text(encoding="utf-8"))):
             used |= {word for word in re.findall(r"'([a-z_]+)'", argument) if word not in roles}
     admin_tabs = set(re.findall(r"^\s{2}([a-z]+): \{ title:", (STATIC / "js" / "pages" / "admin.js").read_text(encoding="utf-8"), re.M))
     assert admin_tabs == {"scenarios", "kb", "users", "audit"}
-    assert {"train", "history", "dashboard", "team"} <= used
+    assert {"overview", "train", "progress", "history", "dashboard", "team"} <= used
     assert (used | admin_tabs) <= keys
 
 

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics import session_rows
+from app.analytics import build_progress, session_rows
 from app.audit import audit
 from app.auth import BasicAuthMiddleware
 from app.client_generator import briefing, generate_client
@@ -217,7 +217,16 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # HTML pages are served without a login check; each page's JS calls /auth/me
 # and redirects to /login on 401. All data comes from the role-checked API.
-_PAGES = {"/": "index.html", "/login": "login.html", "/dashboard": "dashboard.html", "/admin": "admin.html", "/session": "session.html"}
+_PAGES = {
+    "/": "index.html",
+    "/login": "login.html",
+    "/dashboard": "dashboard.html",
+    "/admin": "admin.html",
+    "/session": "session.html",
+    "/overview": "overview.html",
+    "/progress": "progress.html",
+    "/history": "history.html",
+}
 
 
 def _page(filename: str):
@@ -316,6 +325,15 @@ async def list_scenarios(user: User = Depends(require_roles(*TRAINEE_ROLES))):
 async def my_sessions(user: User = Depends(get_current_user)):
     async with SessionLocal() as db:
         return await session_rows(db, [user.id])
+
+
+@app.get("/me/progress")
+async def my_progress(user: User = Depends(require_roles(*TRAINEE_ROLES))):
+    """The caller's own training progress — deterministic aggregates over their
+    stored, scored sessions (rules in analytics.build_progress). Takes no
+    parameters: whose data is returned comes only from the session cookie."""
+    async with SessionLocal() as db:
+        return await build_progress(db, user.id)
 
 
 async def _load_session(db: AsyncSession, session_id: str, user: User, write: bool = False) -> SessionModel:

@@ -680,3 +680,23 @@ details.context .context-body { margin-top: var(--space-3); }
   .claim { grid-template-columns: 1fr; gap: 2px; }
   .facts { grid-template-columns: 1fr; }
 }
+
+/* ===================================================== Phase 5B: progress */
+.next-practice { display: flex; flex-direction: column; gap: var(--space-3); }
+.next-practice .skill { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.source-note { color: var(--color-text-tertiary); font-size: var(--text-sm); }
+.onboarding { text-align: center; padding: var(--space-8) var(--space-4); display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.onboarding h2 { margin: 0; }
+.onboarding p { max-width: 520px; color: var(--color-text-secondary); margin: 0; }
+.scope-note { color: var(--color-text-tertiary); font-size: var(--text-sm); margin: 0; }
+.skill-tag { margin-left: var(--space-2); }
+.status-cell { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.chart-wrap.wide { max-width: 960px; }
+/* Narrow screens: each row becomes a labelled card so actions stay reachable. */
+@media (max-width: 640px) {
+  table.stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.stack-table, table.stack-table tbody, table.stack-table tr, table.stack-table td { display: block; width: 100%; }
+  table.stack-table tr { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+  table.stack-table td { border: 0; padding: var(--space-1) var(--space-2); text-align: left; }
+  table.stack-table td[data-label]::before { content: attr(data-label); display: block; color: var(--color-text-tertiary); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+}

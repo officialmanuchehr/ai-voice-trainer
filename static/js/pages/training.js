@@ -1,4 +1,4 @@
-// Training page: scenario catalogue + briefing, history, the live training
+// Training page: scenario catalogue + briefing, the live training
 // session (text/voice turns, explicit voice states, timer, transcript
 // reconciliation after failures) and finish → scoring → result.
 //
@@ -59,25 +59,6 @@ function renderCards() {
       <div class="card-footer"><button type="button" class="secondary" data-brief="${esc(s.id)}">Выбрать</button></div>
     </article>`).join('')
     || `<div>${stateHtml('empty', 'Нет сценариев по выбранным фильтрам', '')}<div class="row justify-center"><button type="button" class="secondary small" id="reset-filters">Сбросить фильтры</button></div></div>`;
-}
-
-async function loadHistory() {
-  try {
-    const rows = await api('/me/sessions');
-    $('history').innerHTML = rows.length ? `
-      <tr><th>Дата</th><th>Сценарий</th><th>Статус</th><th class="num">Балл</th><th></th></tr>
-      ${rows.map((r) => `<tr>
-        <td>${fmtDate(r.started_at)}</td>
-        <td>${esc(r.title)}<div class="muted small">${esc(r.product_name || '')} · ${esc(DIFFICULTY[r.difficulty] || '')}</div></td>
-        <td>${esc(SESSION_STATUS[r.status] || r.status)}${r.critical_errors ? ` <span class="badge error">крит. ошибок: ${r.critical_errors}</span>` : ''}${r.disputed ? ' <span class="badge plain">оспорено</span>' : ''}</td>
-        <td class="num">${r.total ?? '—'}</td>
-        <td class="row justify-end">
-          ${r.status === 'finished' ? `<a class="btn secondary small" href="/session?id=${encodeURIComponent(r.id)}">Разбор</a>` : ''}
-          ${r.scenario_available ? `<button type="button" class="small" data-brief="${esc(r.scenario_id)}">Повторить</button>` : ''}
-        </td></tr>`).join('')}` : `<tr><td>${stateHtml('empty', 'Вы ещё не проходили тренировок', 'Выберите сценарий выше, чтобы начать.')}</td></tr>`;
-  } catch (err) {
-    $('history').innerHTML = `<tr><td>${stateHtml('error', 'Не удалось загрузить историю', err.message)}</td></tr>`;
-  }
 }
 
 // ------------------------------------------------------------------ briefing
@@ -419,7 +400,6 @@ function backToCatalog() {
   $('session-view').classList.add('hidden');
   $('catalog-view').classList.remove('hidden');
   setPageHeader('Тренировка', 'Каждый раз генерируется новый клиент. Результаты тренировок не влияют на KPI.');
-  loadHistory();
   window.scrollTo(0, 0);
 }
 
@@ -463,14 +443,8 @@ mic.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); }
 mic.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); startRecording(); } });
 mic.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); stopRecording(); } });
 
-function syncActiveNav() {
-  setActiveNav(location.hash === '#history' ? 'history' : 'train');
-}
-window.addEventListener('hashchange', syncActiveNav);
-
 (async () => {
-  me = await initPage(null);
-  syncActiveNav();
+  me = await initPage('train');
   if (!me.can_train) {
     location.href = me.can_dashboard ? '/dashboard' : '/admin';
     return;
@@ -479,7 +453,6 @@ window.addEventListener('hashchange', syncActiveNav);
     scenarios = await api('/scenarios');
   } catch (err) {
     $('cards').innerHTML = stateHtml('error', 'Не удалось загрузить тренировки', err.message);
-    loadHistory();
     return;
   }
   const products = [...new Map(scenarios.map((s) => [s.product_id, s.product_name])).entries()];
@@ -487,7 +460,6 @@ window.addEventListener('hashchange', syncActiveNav);
   const topics = [...new Map(scenarios.flatMap((s) => s.topics).map((t) => [t.id, t.name])).entries()];
   $('topic-filter').innerHTML += topics.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
   renderCards();
-  loadHistory();
   const repeat = new URLSearchParams(location.search).get('repeat');
   if (repeat) openBriefing(repeat);
 })();

@@ -6,8 +6,10 @@
       "items": [
         { "key": "dashboard", "label": "Обзор", "href": "/dashboard", "icon": "overview", "roles": ["sales_lead", "training", "product", "compliance", "admin"], "probe": "/dashboard/data" },
         { "key": "team", "label": "Команда", "href": "/dashboard#managers-panel", "icon": "team", "roles": ["sales_lead"], "probe": "/dashboard/managers/{self}/sessions", "hidden_but_allowed": ["admin"] },
+        { "key": "overview", "label": "Обзор", "href": "/overview", "icon": "overview", "roles": ["manager"], "probe": "/me/progress", "hidden_but_allowed": ["sales_lead", "training", "admin"] },
         { "key": "train", "label": "Тренировка", "href": "/", "icon": "mic", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" },
-        { "key": "history", "label": "История", "href": "/#history", "icon": "history", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" }
+        { "key": "progress", "label": "Мой прогресс", "href": "/progress", "icon": "progress", "roles": ["manager"], "probe": "/me/progress", "hidden_but_allowed": ["sales_lead", "training", "admin"] },
+        { "key": "history", "label": "История", "href": "/history", "icon": "history", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" }
       ]
     },
     {
