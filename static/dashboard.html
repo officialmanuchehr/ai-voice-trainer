@@ -42,44 +42,39 @@
 
         <div class="grid">
           <div class="panel">
-            <h2>Динамика среднего балла</h2>
+            <h2>Средний балл по неделям</h2>
+            <p class="section-note">Средний итоговый балл оценённых тренировок за календарную неделю (с понедельника). Недели без тренировок не показаны.</p>
             <div class="chart-wrap" id="trend"></div>
             <details class="small mt-2"><summary>Таблица</summary><div class="table-wrap"><table id="trend-table"></table></div></details>
           </div>
           <div class="panel">
             <h2>Навыки команды</h2>
-            <p class="section-note">Средний % от максимума по критерию, слабые — сверху. ⚠ — ниже 60%.</p>
+            <p class="section-note">Средний процент от максимума по каждому критерию — от низкого к высокому.</p>
+            <p class="small" id="weakest-skill"></p>
             <div id="skills"></div>
           </div>
         </div>
 
-        <div class="grid">
+        <div class="stack">
           <div class="panel">
             <h2>Продукты</h2>
+            <p class="section-note">Продукт — из версии сценария, по которой проходила тренировка.</p>
             <div class="table-wrap"><table id="products"></table></div>
           </div>
           <div class="panel">
-            <h2>Риски</h2>
+            <h2>Критичные ошибки и утверждения</h2>
             <div id="risks"></div>
           </div>
         </div>
 
-        <div class="panel" id="managers-panel">
-          <h2>Менеджеры</h2>
-          <p class="section-note">Сначала — те, кому нужна помощь. Нажмите на имя, чтобы увидеть тренировки.</p>
-          <div class="table-wrap"><table id="managers"></table></div>
-          <div id="manager-sessions" class="hidden mt-3"></div>
+        <div class="panel hidden" id="recent-panel">
+          <div class="section-head"><h2 class="m-0">Последние тренировки команды</h2><a href="/team">Команда</a></div>
+          <div id="recent"></div>
         </div>
 
-        <div class="grid">
-          <div class="panel">
-            <h2>Рекомендации по обучению</h2>
-            <ul class="plain" id="recommendations"></ul>
-          </div>
-          <div class="panel" id="disputes-panel">
-            <h2>Оспоренные оценки</h2>
-            <div id="disputes"></div>
-          </div>
+        <div class="panel" id="disputes-panel">
+          <h2>Оспоренные оценки</h2>
+          <div id="disputes"></div>
         </div>
       </div>
     </main>

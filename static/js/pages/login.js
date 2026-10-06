@@ -15,8 +15,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       json: { username: document.getElementById('username').value, password: document.getElementById('password').value },
     });
     const next = new URLSearchParams(location.search).get('next');
-    // Managers land on their overview; other roles keep the existing default.
-    const home = user.role === 'manager' ? '/overview' : '/';
+    // Managers land on their overview, sales leads on the team overview;
+    // other roles keep the existing default.
+    const home = { manager: '/overview', sales_lead: '/dashboard' }[user.role] || '/';
     location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : home;
   } catch (err) {
     errorEl.textContent = err.message;

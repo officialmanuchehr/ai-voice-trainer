@@ -1,11 +1,11 @@
 {
-  "_comment": "Sidebar navigation. Visibility is UX only — the backend enforces access. Each item's `roles` must match the backend: `probe` is an API endpoint that answers 200 for those roles and 403 for every other role except the ones listed in `hidden_but_allowed` (allowed, but deliberately not shown). Checked by tests/test_phase4a.py. Only pages that exist are listed.",
+  "_comment": "Sidebar navigation. Visibility is UX only — the backend enforces access. Each item's `roles` must match the backend: `probe` is an API endpoint ({self} = the caller, {manager1} = the demo manager on lead1's team) that answers 200 for those roles and 403 for every other role except the ones listed in `hidden_but_allowed` (allowed, but deliberately not shown). Checked by tests/test_phase4a.py. Only pages that exist are listed.",
   "groups": [
     {
       "label": "Работа",
       "items": [
         { "key": "dashboard", "label": "Обзор", "href": "/dashboard", "icon": "overview", "roles": ["sales_lead", "training", "product", "compliance", "admin"], "probe": "/dashboard/data" },
-        { "key": "team", "label": "Команда", "href": "/dashboard#managers-panel", "icon": "team", "roles": ["sales_lead"], "probe": "/dashboard/managers/{self}/sessions", "hidden_but_allowed": ["admin"] },
+        { "key": "team", "label": "Команда", "href": "/team", "icon": "team", "roles": ["sales_lead"], "probe": "/dashboard/managers/{manager1}/progress", "hidden_but_allowed": ["admin"] },
         { "key": "overview", "label": "Обзор", "href": "/overview", "icon": "overview", "roles": ["manager"], "probe": "/me/progress", "hidden_but_allowed": ["sales_lead", "training", "admin"] },
         { "key": "train", "label": "Тренировка", "href": "/", "icon": "mic", "roles": ["manager", "sales_lead", "training", "admin"], "probe": "/scenarios" },
         { "key": "progress", "label": "Мой прогресс", "href": "/progress", "icon": "progress", "roles": ["manager"], "probe": "/me/progress", "hidden_but_allowed": ["sales_lead", "training", "admin"] },

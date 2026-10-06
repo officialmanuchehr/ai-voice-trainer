@@ -22,8 +22,9 @@ import app.main as main
 STATIC = Path(__file__).resolve().parent.parent / "static"
 NAV = json.loads((STATIC / "js" / "nav.json").read_text(encoding="utf-8"))
 NAV_ITEMS = [item for group in NAV["groups"] for item in group["items"]]
-SHELL_PAGES = {"/": "training", "/dashboard": "dashboard", "/admin": "admin", "/session": "session", "/overview": "overview", "/progress": "progress", "/history": "history"}
+SHELL_PAGES = {"/": "training", "/dashboard": "dashboard", "/admin": "admin", "/session": "session", "/overview": "overview", "/progress": "progress", "/history": "history", "/team": "team", "/manager": "manager"}
 ALL_PAGES = [*SHELL_PAGES, "/login"]
+SHARED_VIEWS = {"/static/js/progress-view.js"}
 
 
 # ------------------------------------------------------------ navigation
@@ -35,8 +36,9 @@ def test_nav_visibility_matches_backend_permissions(server, role):
     by the backend (unless explicitly listed as hidden_but_allowed)."""
     client = login(ALL_ROLES_USERS[role])
     me = ok(client.get("/auth/me"))
+    manager1 = ok(login("manager1").get("/auth/me"))["id"]  # on lead1's team in the seed
     for item in NAV_ITEMS:
-        status = client.get(item["probe"].replace("{self}", me["id"])).status_code
+        status = client.get(item["probe"].replace("{self}", me["id"]).replace("{manager1}", manager1)).status_code
         if role in item["roles"] or role in item.get("hidden_but_allowed", []):
             assert status == 200, (role, item["key"], status)
         else:
@@ -93,7 +95,9 @@ def test_shell_pages_have_the_shell_and_load_scripts_in_order(server, page, scri
         assert f'id="{element_id}"' in html, (page, element_id)
     assert 'class="skip-link" href="#main"' in html
     order = re.findall(r'<script src="([^"]+)"', html)
-    assert order == ["/static/theme.js", "/static/app.js", "/static/js/ui.js", "/static/js/shell.js", f"/static/js/pages/{script}.js"]
+    assert order[:4] == ["/static/theme.js", "/static/app.js", "/static/js/ui.js", "/static/js/shell.js"]
+    assert order[-1] == f"/static/js/pages/{script}.js"
+    assert set(order[4:-1]) <= SHARED_VIEWS  # shared presentation modules only
 
 
 def test_login_page_is_standalone_and_keeps_its_form(server):

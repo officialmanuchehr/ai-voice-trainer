@@ -47,6 +47,18 @@ KB_APPROVE_ROLES = {"compliance", "admin"}
 KB_PUBLISH_ROLES = {"product", "admin"}
 
 
+def lead_may_view(lead: User, target: User | None) -> bool:
+    """A sales lead's individual-data scope: users with the manager role on
+    the lead's own (current) team. Same-team membership alone is not enough —
+    other leads, trainers or admins assigned to the team are outside it."""
+    return (
+        target is not None
+        and lead.team_id is not None
+        and target.role == "manager"
+        and target.team_id == lead.team_id
+    )
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), _PBKDF2_ITERATIONS)

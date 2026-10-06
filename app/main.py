@@ -33,7 +33,7 @@ from app.routers import admin as admin_router
 from app.routers import auth as auth_router
 from app.routers import dashboard as dashboard_router
 from app.scoring_math import cap_reason, effective_weights, fail_closed_verdict, finalize
-from app.security import CONTENT_VIEW_ROLES, TRAINEE_ROLES, get_current_user, require_roles
+from app.security import CONTENT_VIEW_ROLES, TRAINEE_ROLES, get_current_user, lead_may_view, require_roles
 from app.seed_loader import list_rubrics, load_rubric, load_seed
 
 dialog_provider = get_dialog_provider()
@@ -226,6 +226,8 @@ _PAGES = {
     "/overview": "overview.html",
     "/progress": "progress.html",
     "/history": "history.html",
+    "/team": "team.html",
+    "/manager": "manager.html",
 }
 
 
@@ -338,8 +340,9 @@ async def my_progress(user: User = Depends(require_roles(*TRAINEE_ROLES))):
 
 async def _load_session(db: AsyncSession, session_id: str, user: User, write: bool = False) -> SessionModel:
     """Owner may do anything with their session. Read-only access: admins, and
-    a sales lead for sessions of managers on their own team (PRD §14). The
-    aggregate-only roles never see individual transcripts."""
+    a sales lead for sessions of users with the manager role on their own team
+    (PRD §14; same-team leads, trainers or admins are not in a lead's scope).
+    The aggregate-only roles never see individual transcripts."""
     session = await db.get(SessionModel, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -352,9 +355,9 @@ async def _load_session(db: AsyncSession, session_id: str, user: User, write: bo
         raise HTTPException(status_code=403, detail="это чужая сессия")
     if user.role == "admin":
         return session
-    if user.role == "sales_lead" and user.team_id is not None and session.user_id:
+    if user.role == "sales_lead" and session.user_id:
         owner = await db.get(User, session.user_id)
-        if owner is not None and owner.team_id == user.team_id:
+        if lead_may_view(user, owner):
             return session
     raise HTTPException(status_code=403, detail="нет доступа к этой сессии")
 

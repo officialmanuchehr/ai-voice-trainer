@@ -36,7 +36,7 @@ def test_pages_call_only_the_callers_own_endpoints(name, allowed):
     assert not re.search(r"user_id|manager_id|team_id|username", script(name))
 
 
-@pytest.mark.parametrize("name", PAGES)
+@pytest.mark.parametrize("name", [*PAGES, "../progress-view"])
 def test_no_analytics_math_in_javascript(name):
     """The backend owns averages, normalisation, ranking and grouping."""
     source = script(name)
@@ -60,7 +60,7 @@ def test_next_skill_is_labelled_as_evaluator_feedback_not_a_plan():
 
 
 def test_progress_has_text_equivalents_and_no_target_line():
-    source = script("progress")
+    source = (STATIC / "js" / "progress-view.js").read_text(encoding="utf-8")  # shared with the Phase 6 drill-down
     assert 'role="img"' in source and "aria-label" in source
     assert "<details" in source and "<table>" in source
     assert "ref-line" not in source and "порог" not in source
@@ -78,7 +78,7 @@ def test_training_page_no_longer_loads_history():
 
 
 def test_manager_lands_on_overview():
-    assert "user.role === 'manager' ? '/overview' : '/'" in (STATIC / "js" / "pages" / "login.js").read_text(encoding="utf-8")
+    assert "{ manager: '/overview', sales_lead: '/dashboard' }[user.role] || '/'" in (STATIC / "js" / "pages" / "login.js").read_text(encoding="utf-8")
 
 
 def test_anonymous_gets_only_the_static_shell_and_no_data(server):

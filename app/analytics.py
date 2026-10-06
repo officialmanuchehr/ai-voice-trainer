@@ -2,6 +2,8 @@
 fine at pilot scale (hundreds of sessions); move to SQL aggregates if it grows.
 
 Results are informational only: nothing here feeds a manager's KPI (PRD §11).
+There are deliberately no business thresholds or classifications ("needs
+help", risk levels, rankings): the views show facts, people draw conclusions.
 """
 
 from collections import Counter, defaultdict
@@ -13,10 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import ClaimCheck, Feedback, Product, Scenario, ScenarioVersion, Score, TranscriptTurn, User
 from app.models import Session as SessionModel
 from app.seed_loader import list_rubrics
-
-NEEDS_HELP_SCORE = 60
-NEEDS_HELP_CRITICAL_RATE = 0.3
-
 
 def _aware(dt: datetime | None) -> datetime | None:
     # SQLite hands back naive datetimes even for timezone=True columns.
@@ -93,6 +91,39 @@ async def session_rows(db: AsyncSession, user_ids: list[str]) -> list[dict]:
     return rows
 
 
+def _criterion_order() -> dict[str, int]:
+    order: dict[str, int] = {}
+    for rubric in list_rubrics():
+        for criterion in rubric["criteria"]:
+            order.setdefault(criterion["id"], len(order))
+    return order
+
+
+def summarize_criteria(breakdowns) -> dict:
+    """The one criterion rule shared by personal progress, the team view and
+    each manager's row. Per scored session: clamp(score, 0, max) / max (first
+    entry per criterion); per criterion: mean over sessions. Sorted weakest
+    first on the unrounded mean; ties go to the earlier rubric criterion.
+    Strongest is None with fewer than 2 criteria."""
+    names, order = criterion_names(), _criterion_order()
+    ratios: dict[str, list[float]] = defaultdict(list)
+    for breakdown in breakdowns:
+        seen = set()
+        for item in breakdown or []:
+            cid, maximum = item.get("criterion_id"), item.get("max") or 0
+            if cid in seen or maximum <= 0:
+                continue
+            seen.add(cid)
+            ratios[cid].append(min(max(item.get("score", 0), 0), maximum) / maximum)
+    rank = lambda cid: order.get(cid, len(order))  # noqa: E731
+    means = {cid: sum(v) / len(v) for cid, v in ratios.items()}
+    ordered = sorted(means, key=lambda cid: (means[cid], rank(cid)))
+    criteria = [{"criterion_id": cid, "name": names.get(cid, cid), "avg_pct": round(means[cid] * 100), "samples": len(ratios[cid])} for cid in ordered]
+    strongest = max(means, key=lambda cid: (means[cid], -rank(cid))) if len(means) > 1 else None
+    pick = lambda cid: next({k: c[k] for k in ("criterion_id", "name", "avg_pct")} for c in criteria if c["criterion_id"] == cid) if cid else None  # noqa: E731
+    return {"criteria": criteria, "weakest": pick(ordered[0] if ordered else None), "strongest": pick(strongest)}
+
+
 async def build_dashboard(
     db: AsyncSession,
     viewer: User,
@@ -129,7 +160,6 @@ async def build_dashboard(
 
     ids = [s.id for s, _, _ in sessions]
     scores = {sc.session_id: sc for sc in (await db.execute(select(Score).where(Score.session_id.in_(ids)))).scalars()}
-    feedback = {f.session_id: f for f in (await db.execute(select(Feedback).where(Feedback.session_id.in_(ids)))).scalars()}
     verdicts = Counter((await db.execute(select(ClaimCheck.verdict).where(ClaimCheck.session_id.in_(ids)))).scalars())
     latencies = list(
         (
@@ -141,23 +171,12 @@ async def build_dashboard(
         ).scalars()
     )
 
-    names = criterion_names()
-    scored = [(s, started, pid, scores[s.id]) for s, started, pid in sessions if s.id in scores]
+    # Scored = finished with a stored Score (same rule as personal progress).
+    scored = [(s, started, pid, scores[s.id]) for s, started, pid in sessions if s.status == "finished" and s.id in scores]
 
-    # Skills: share of the criterion's max, averaged over scored sessions.
-    skill_values: dict[str, list[float]] = defaultdict(list)
-    for *_, score in scored:
-        for item in score.breakdown or []:
-            maximum = item.get("max") or 0
-            if maximum:
-                skill_values[item["criterion_id"]].append(min(max(item.get("score", 0), 0), maximum) / maximum)
-    skills = sorted(
-        (
-            {"criterion_id": cid, "name": names.get(cid, cid), "avg_pct": round(sum(v) / len(v) * 100), "samples": len(v)}
-            for cid, v in skill_values.items()
-        ),
-        key=lambda x: x["avg_pct"],
-    )
+    # Skills: the shared normalised criterion rule (summarize_criteria).
+    team_skills = summarize_criteria(score.breakdown for *_, score in scored)
+    skills = team_skills["criteria"]
 
     # Weekly trend (weeks start on Monday).
     weekly: dict[str, list[int]] = defaultdict(list)
@@ -188,6 +207,7 @@ async def build_dashboard(
                 "scored": len(d["scores"]),
                 "avg_score": _avg(d["scores"]),
                 "critical_rate": round(d["critical"] / len(d["scores"]) * 100) if d["scores"] else None,
+                "sessions_with_critical_errors": d["critical"],
             }
             for pid, d in per_product.items()
         ),
@@ -198,32 +218,22 @@ async def build_dashboard(
     error_types = Counter(e.get("type") for *_, score in scored for e in (score.critical_errors or []))
     critical_sessions = sum(1 for *_, score in scored if score.critical_errors)
 
-    # Managers (named views only).
+    # Managers (named views only): factual indicators per manager, ordered
+    # alphabetically — no classification, threshold or ranking.
     manager_rows = []
     if named:
         by_user: dict[str, list] = defaultdict(list)
         for s, started, pid, score in scored:
-            by_user[s.user_id].append((started, score))
+            by_user[s.user_id].append((started, s.id, score))
         started_by_user = Counter(s.user_id for s, *_ in sessions)
+        last_activity: dict[str, datetime] = {}
+        for s, started, *_ in sessions:
+            if s.user_id and (s.user_id not in last_activity or started > last_activity[s.user_id]):
+                last_activity[s.user_id] = started
         for m in managers:
-            history = sorted(by_user.get(m.id, []), key=lambda x: x[0])
-            totals = [sc.total for _, sc in history]
-            critical_rate = sum(1 for _, sc in history if sc.critical_errors) / len(history) if history else 0
-            user_skills: dict[str, list[float]] = defaultdict(list)
-            for _, sc in history:
-                for item in sc.breakdown or []:
-                    if item.get("max"):
-                        user_skills[item["criterion_id"]].append(item.get("score", 0) / item["max"])
-            weakest = min(user_skills.items(), key=lambda kv: sum(kv[1]) / len(kv[1]), default=None)
-            reasons = []
-            if not started_by_user.get(m.id):
-                reasons.append("нет тренировок за период")
-            if totals and _avg(totals) < NEEDS_HELP_SCORE:
-                reasons.append(f"средний балл ниже {NEEDS_HELP_SCORE}")
-            if history and critical_rate >= NEEDS_HELP_CRITICAL_RATE:
-                reasons.append("частые критичные ошибки")
-            if len(totals) >= 2 and totals[-1] - totals[0] <= -10:
-                reasons.append("балл снижается")
+            history = sorted(by_user.get(m.id, []), key=lambda x: (x[0], x[1]))
+            totals = [sc.total for *_, sc in history]
+            latest = history[-1] if history else None
             manager_rows.append(
                 {
                     "user_id": m.id,
@@ -233,34 +243,25 @@ async def build_dashboard(
                     "avg_score": _avg(totals),
                     "first_score": totals[0] if totals else None,
                     "last_score": totals[-1] if totals else None,
-                    "critical_rate": round(critical_rate * 100) if history else None,
-                    "weakest_skill": names.get(weakest[0], weakest[0]) if weakest else None,
-                    "last_session_at": history[-1][0].isoformat() if history else None,
-                    "needs_help": bool(reasons),
-                    "reasons": reasons,
+                    "last_session_at": latest[0].isoformat() if latest else None,
+                    "last_activity_at": last_activity[m.id].isoformat() if m.id in last_activity else None,
+                    "critical_errors": sum(len(sc.critical_errors or []) for *_, sc in history),
+                    "sessions_with_critical_errors": sum(1 for *_, sc in history if sc.critical_errors),
+                    "latest_has_critical_error": bool(latest and latest[2].critical_errors),
+                    "weakest_skill": summarize_criteria(sc.breakdown for *_, sc in history)["weakest"],
                 }
             )
-        manager_rows.sort(key=lambda r: (not r["needs_help"], r["avg_score"] if r["avg_score"] is not None else -1))
+        manager_rows.sort(key=lambda r: (r["full_name"].casefold(), r["user_id"]))
 
-    # Recommendations (PRD §11 «рекомендации по темам обучения»).
-    recommendations = [
-        f"Тренинг по навыку «{s['name']}»: в среднем {s['avg_pct']}% от максимума."
-        for s in skills
-        if s["avg_pct"] < 60
-    ][:3]
-    if error_types:
-        top_type, top_count = error_types.most_common(1)[0]
-        recommendations.append(f"Разобрать с командой критичную ошибку «{top_type}» — {top_count} случ.")
-    scored_products = [p for p in product_rows if p["avg_score"] is not None]
-    if len(scored_products) >= 2:
-        weakest_product = scored_products[0]
-        recommendations.append(
-            f"Больше тренировок по продукту «{weakest_product['name']}» — самый низкий средний балл ({weakest_product['avg_score']})."
-        )
-    next_skills = Counter(f.next_skill for f in feedback.values() if f.next_skill)
-    if next_skills:
-        skill, count = next_skills.most_common(1)[0]
-        recommendations.append(f"Оценщик чаще всего советует тренировать: «{skill}» ({count} сесс.).")
+        # Recent activity: the latest sessions in scope (any status), with the
+        # bound version's title/product/difficulty (session_rows).
+        in_scope = {s.id for s, *_ in sessions}
+        rows = [r for r in await session_rows(db, [m.id for m in managers]) if r["id"] in in_scope]
+        names_by_id = {m.id: m.full_name or m.username for m in managers}
+        owner = {s.id: s.user_id for s, *_ in sessions}
+        recent_sessions = [{**r, "user_id": owner[r["id"]], "full_name": names_by_id.get(owner[r["id"]])} for r in rows[:10]]
+    else:
+        recent_sessions = []
 
     disputes = [
         {
@@ -288,32 +289,28 @@ async def build_dashboard(
             "active_managers": len({s.user_id for s, *_ in sessions if s.user_id}),
             "total_managers": len(managers),
             "avg_score": _avg([score.total for *_, score in scored]),
+            "critical_errors": sum(len(score.critical_errors or []) for *_, score in scored),
+            "sessions_with_critical_errors": critical_sessions,
+            "managers_trained": len({s.user_id for s, *_ in scored if s.user_id}),
             "critical_session_rate": round(critical_sessions / finished * 100) if finished else None,
             "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else None,
             "dispute_rate": round(len(disputes) / finished * 100) if finished else None,
         },
         "trend": trend,
         "skills": skills,
+        "weakest_skill": team_skills["weakest"],
         "products": product_rows,
         "risks": {
             "by_type": [{"type": t, "count": c} for t, c in error_types.most_common()],
             "claims": {v: verdicts.get(v, 0) for v in ("approved", "unapproved", "forbidden")},
         },
         "managers": manager_rows,
-        "recommendations": recommendations,
+        "recent_sessions": recent_sessions,
         "disputes": disputes if named or viewer.role == "training" else [],
     }
 
 
 # ------------------------------------------------------- personal progress
-
-
-def _criterion_order() -> dict[str, int]:
-    order: dict[str, int] = {}
-    for rubric in list_rubrics():
-        for criterion in rubric["criteria"]:
-            order.setdefault(criterion["id"], len(order))
-    return order
 
 
 async def build_progress(db: AsyncSession, user_id: str) -> dict:
@@ -349,11 +346,8 @@ async def build_progress(db: AsyncSession, user_id: str) -> dict:
     scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
     products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
     versions = await _scenario_versions(db)
-    names = criterion_names()
-    order = _criterion_order()
 
     trend, product_scores, product_critical = [], defaultdict(list), Counter()
-    ratios: dict[str, list[float]] = defaultdict(list)
     critical_total = sessions_with_critical = 0
     for s in included:
         score = scores[s.id]
@@ -373,25 +367,8 @@ async def build_progress(db: AsyncSession, user_id: str) -> dict:
         )
         product_scores[bound["product_id"]].append(score.total)
         product_critical[bound["product_id"]] += bool(errors)
-        seen = set()
-        for item in score.breakdown or []:
-            cid, maximum = item.get("criterion_id"), item.get("max") or 0
-            if cid in seen or maximum <= 0:
-                continue
-            seen.add(cid)
-            ratios[cid].append(min(max(item.get("score", 0), 0), maximum) / maximum)
 
-    criteria = [
-        {"criterion_id": cid, "name": names.get(cid, cid), "avg_pct": round(sum(v) / len(v) * 100), "samples": len(v), "_mean": sum(v) / len(v)}
-        for cid, v in ratios.items()
-    ]
-    rank = lambda c: order.get(c["criterion_id"], len(order))  # noqa: E731
-    weakest = min(criteria, key=lambda c: (c["_mean"], rank(c)), default=None)
-    strongest = max(criteria, key=lambda c: (c["_mean"], -rank(c)), default=None) if len(criteria) > 1 else None
-    pick = lambda c: c and {k: c[k] for k in ("criterion_id", "name", "avg_pct")}  # noqa: E731
-    criteria.sort(key=lambda c: (c["_mean"], rank(c)))
-    for c in criteria:
-        del c["_mean"]
+    summary = summarize_criteria(scores[s.id].breakdown for s in included)
 
     verdicts = Counter(fail_closed_verdict(v) for v in claim_rows)
     latest_with_skill = next((s for s in reversed(included) if feedback.get(s.id) and feedback[s.id].next_skill), None)
@@ -410,9 +387,9 @@ async def build_progress(db: AsyncSession, user_id: str) -> dict:
             "first_score": totals[0] if totals else None,
         },
         "score_trend": trend,
-        "criteria": criteria,
-        "weakest_criterion": pick(weakest),
-        "strongest_criterion": pick(strongest),
+        "criteria": summary["criteria"],
+        "weakest_criterion": summary["weakest"],
+        "strongest_criterion": summary["strongest"],
         "products": sorted(
             (
                 {"product_id": pid, "name": products.get(pid, pid), "sessions": len(v), "avg_score": _avg(v), "sessions_with_critical_errors": product_critical[pid]}
