@@ -15,6 +15,7 @@
     {
       "label": "Контент",
       "items": [
+        { "key": "queue", "label": "Задачи", "href": "/queue", "icon": "queue", "roles": ["training", "product", "compliance", "admin"], "probe": "/admin/queue" },
         { "key": "scenarios", "label": "Сценарии", "href": "/admin?tab=scenarios", "icon": "scenarios", "roles": ["training", "product", "compliance", "admin"], "probe": "/admin/scenarios" },
         { "key": "kb", "label": "База знаний", "href": "/admin?tab=kb", "icon": "book", "roles": ["training", "product", "compliance", "admin"], "probe": "/admin/kb" }
       ]

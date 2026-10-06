@@ -228,6 +228,7 @@ _PAGES = {
     "/history": "history.html",
     "/team": "team.html",
     "/manager": "manager.html",
+    "/queue": "queue.html",
 }
 
 

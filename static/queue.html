@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Разбор тренировки — AI Voice Trainer</title>
+<title>Задачи — AI Voice Trainer</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/static/css/app.css" />
 <script src="/static/theme.js"></script>
@@ -19,30 +19,27 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
       <div class="app-header-titles">
-        <h1 id="page-title">Разбор тренировки</h1>
-        <p class="page-subtitle" id="page-subtitle">Аудио не хранится — только текст разговора.</p>
+        <h1 id="page-title">Задачи по контенту</h1>
+        <p class="page-subtitle" id="page-subtitle">Что ждёт действий вашей роли в сценариях и базе знаний</p>
       </div>
       <div class="app-header-actions" id="page-actions">
-        <button type="button" class="secondary small" id="back-btn">← Назад</button>
       </div>
     </header>
 
     <main id="main" class="app-content" tabindex="-1">
-      <div class="page narrow">
-        <div class="panel" id="result"><div class="state loading"><div class="spinner" aria-hidden="true"></div><div>Загрузка…</div></div></div>
-        <div class="panel hidden" id="transcript-panel">
-          <h2>Транскрипт</h2>
-          <div id="chat" class="transcript chat-full"></div>
-        </div>
+      <div class="page" id="content">
+        <div class="state loading"><div class="spinner" aria-hidden="true"></div><div>Загрузка…</div></div>
       </div>
     </main>
   </div>
 </div>
+<div class="tooltip" id="tooltip" role="tooltip"></div>
 <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
 <script src="/static/app.js"></script>
 <script src="/static/js/ui.js"></script>
 <script src="/static/js/shell.js"></script>
-<script src="/static/js/pages/session.js"></script>
+<script src="/static/js/content-model.js"></script>
+<script src="/static/js/pages/queue.js"></script>
 </body>
 </html>

@@ -260,6 +260,11 @@ async function changeKbStatus(target) {
   if (unsaved.dirty) { kbMessage('<div class="error-box">Сначала сохраните или отмените изменения.</div>'); return; }
   const published = st.product.versions.find((x) => x.status === 'published');
   const ctx = { name: st.data.name || st.productId, version: st.version, status: st.meta.status, publishedVersion: published && published.version };
+  if (target === 'archived' && st.meta.status === 'published') {
+    // Scenarios of this product that are live now and would stop starting.
+    const live = (await api('/admin/scenarios')).filter((x) => x.published_version && x.product_id === st.productId);
+    ctx.liveScenarios = live.map((x) => x.title);
+  }
   if (!(await confirmTransition('kb', ctx, target))) return;
   try {
     await api(`/admin/kb/${encodeURIComponent(st.productId)}/versions/${encodeURIComponent(st.version)}/status`, { method: 'POST', json: { status: target } });

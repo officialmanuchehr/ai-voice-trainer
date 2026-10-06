@@ -141,9 +141,13 @@ async def build_dashboard(
     managers = (await db.execute(manager_query)).scalars().all()
     all_users = {u.id: u for u in (await db.execute(select(User))).scalars()}
 
+    # Management analytics describe manager training: other roles' own
+    # practice sessions (leads, trainers, admins …) are never counted.
     session_query = select(SessionModel)
     if team_id is not None:
         session_query = session_query.where(SessionModel.user_id.in_([m.id for m in managers]))
+    else:
+        session_query = session_query.where(SessionModel.user_id.in_(select(User.id).where(User.role == "manager")))
     scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
     products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
     versions = await _scenario_versions(db)

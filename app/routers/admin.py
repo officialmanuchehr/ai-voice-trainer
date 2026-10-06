@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from app.audit import audit
 from app.content import (
     DIFFICULTIES,
+    can_transition,
     TOPICS,
     kb_review_blockers,
     kb_review_message,
@@ -419,6 +420,66 @@ async def set_kb_status(product_id: str, version: str, body: StatusBody, user: U
     return {"product_id": product_id, "version": version, "status": body.status}
 
 
+# ------------------------------------------------------------- work queue
+
+# Lifecycle steps that move content forward. Archive and "back to draft" are
+# always available to someone and are not "waiting work".
+_QUEUE_STEPS = ("approved", "published")
+
+
+@router.get("/queue")
+async def work_queue(user: User = Depends(_content_viewer)):
+    """Content versions where the caller has a next lifecycle step — decided
+    by can_transition (lifecycle + role sets), nothing else — plus KB drafts
+    with review blockers the caller may edit. Each item says whether the step
+    is currently blocked by the existing guards (unreviewed KB, no clean
+    published KB for a scenario). Read-only; no new approval policy."""
+    async with SessionLocal() as db:
+        scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
+        versions = (await db.execute(select(ScenarioVersion).order_by(ScenarioVersion.scenario_id, ScenarioVersion.version))).scalars().all()
+        kbs = (await db.execute(select(KnowledgeBase).order_by(KnowledgeBase.product_id, KnowledgeBase.id))).scalars().all()
+        products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
+    published = {kb.product_id: kb for kb in kbs if kb.status == "published"}
+    items = []
+    for v in versions:
+        steps = [t for t in _QUEUE_STEPS if can_transition(user, v, t).allowed]
+        if not steps:
+            continue
+        product_id = (v.data or {}).get("product_id")
+        blocked = None
+        if "published" in steps:
+            kb = published.get(product_id)
+            if kb is None:
+                blocked = {"code": "no_published_kb", "detail": "у продукта нет опубликованной базы знаний"}
+            elif kb_review_blockers(kb.data or {}):
+                blocked = {"code": "kb_not_clean", "detail": f"опубликованная база знаний v{kb.version} содержит непроверенные записи"}
+        items.append(
+            {
+                "kind": "scenario", "id": v.scenario_id, "version": v.version, "status": v.status,
+                "title": (v.data or {}).get("title") or v.scenario_id, "product_id": product_id, "product_name": products.get(product_id),
+                "steps": steps, "blocked": blocked, "author": v.author, "updated_at": _iso(v.updated_at or v.created_at),
+                "live_version": scenarios[v.scenario_id].published_version if v.scenario_id in scenarios else None,
+            }
+        )
+    for kb in kbs:
+        steps = [t for t in _QUEUE_STEPS if can_transition(user, kb, t).allowed]
+        blockers = kb_review_blockers(kb.data or {}) if kb.status in ("draft", "approved") else []
+        editable_with_blockers = kb.status == "draft" and blockers and user.role in KB_EDIT_ROLES
+        if not steps and not editable_with_blockers:
+            continue
+        items.append(
+            {
+                "kind": "kb", "id": kb.product_id, "version": kb.version, "status": kb.status,
+                "title": (kb.data or {}).get("name") or products.get(kb.product_id) or kb.product_id, "product_id": kb.product_id,
+                "product_name": products.get(kb.product_id), "steps": steps, "review_blockers": blockers,
+                "blocked": {"code": "kb_unreviewed", "detail": f"требует проверки: {len(blockers)}"} if blockers else None,
+                "author": kb.author, "updated_at": _iso(kb.updated_at or kb.created_at), "notes": kb.notes,
+                "live_version": published[kb.product_id].version if kb.product_id in published else None,
+            }
+        )
+    return {"role": user.role, "items": items}
+
+
 # ------------------------------------------------------------ users, teams
 
 
@@ -486,7 +547,7 @@ async def edit_user(user_id: str, body: EditUser, user: User = Depends(_admin)):
         if target is None:
             raise HTTPException(status_code=404, detail="пользователь не найден")
         changes = {
-            k: v
+            k: {"from": getattr(target, k), "to": v}
             for k, v in {"role": body.role, "team_id": body.team_id, "is_active": body.is_active}.items()
             if getattr(target, k) != v
         }
@@ -536,11 +597,26 @@ async def create_team(body: NewTeam, user: User = Depends(_admin)):
 
 
 @router.get("/audit")
-async def list_audit(limit: int = 200, entity_type: str | None = None, user: User = Depends(require_roles("admin", "compliance"))):
+async def list_audit(
+    limit: int = 200,
+    entity_type: str | None = None,
+    action: str | None = None,
+    actor: str | None = None,
+    entity_id: str | None = None,
+    user: User = Depends(require_roles("admin", "compliance")),
+):
+    """Newest first. Optional exact filters on entity type, action and object
+    id; `actor` matches part of the actor's username."""
     async with SessionLocal() as db:
         query = select(AuditLog).order_by(AuditLog.id.desc()).limit(min(max(limit, 1), 1000))
         if entity_type:
             query = query.where(AuditLog.entity_type == entity_type)
+        if action:
+            query = query.where(AuditLog.action == action)
+        if entity_id:
+            query = query.where(AuditLog.entity_id == entity_id)
+        if actor:
+            query = query.where(AuditLog.actor_username.contains(actor.strip()))
         rows = (await db.execute(query)).scalars().all()
     return [
         {

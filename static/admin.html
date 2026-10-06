@@ -47,28 +47,37 @@
         </section>
 
         <section id="tab-users" class="hidden">
-          <div class="grid">
+          <div class="grid users-grid">
             <div class="panel">
               <h2>Пользователи</h2>
-              <div class="table-wrap"><table id="user-table"></table></div>
+              <div class="form-grid filters" role="search">
+                <div class="field"><label for="u-search">Поиск по логину или ФИО</label><input type="search" id="u-search" autocomplete="off" /></div>
+                <div class="field"><label for="u-filter-role">Роль</label><select id="u-filter-role"><option value="">Все роли</option></select></div>
+                <div class="field"><label for="u-filter-team">Команда</label><select id="u-filter-team"><option value="">Все команды</option><option value="none">Без команды</option></select></div>
+                <div class="field"><label for="u-filter-active">Статус</label><select id="u-filter-active"><option value="">Все</option><option value="active">Активные</option><option value="inactive">Отключённые</option></select></div>
+              </div>
+              <p class="muted small m-0" id="user-count" role="status"></p>
+              <div class="table-wrap"><table id="user-table" class="stack-table"></table></div>
             </div>
             <div class="stack">
               <form class="panel" id="user-form">
                 <h2 id="user-form-title">Новый пользователь</h2>
                 <input type="hidden" id="u-id" />
-                <label class="field">Логин<input type="text" id="u-username" required autocomplete="off" /></label>
-                <label class="field">ФИО<input type="text" id="u-fullname" /></label>
-                <label class="field">Роль<select id="u-role"></select></label>
-                <label class="field">Команда<select id="u-team"><option value="">—</option></select></label>
-                <label class="field">Пароль<input type="password" id="u-password" placeholder="мин. 8 символов" autocomplete="new-password" /></label>
-                <label class="checkbox-row" id="u-active-wrap"><input type="checkbox" id="u-active" checked /> Активен</label>
+                <div class="field"><label for="u-username">Логин</label><input type="text" id="u-username" required autocomplete="off" /></div>
+                <div class="field"><label for="u-fullname">ФИО</label><input type="text" id="u-fullname" /></div>
+                <div class="field"><label for="u-role">Роль</label><select id="u-role"></select></div>
+                <div class="field"><label for="u-team">Команда</label><select id="u-team"><option value="">—</option></select></div>
+                <div class="field"><label for="u-password">Пароль</label><input type="password" id="u-password" placeholder="мин. 8 символов" autocomplete="new-password" />
+                  <div class="field-help" id="u-password-help">Пароль задаёт администратор; после сохранения он нигде не показывается.</div></div>
+                <label class="checkbox-row" id="u-active-wrap" for="u-active"><input type="checkbox" id="u-active" checked /> Активен (может входить)</label>
                 <div class="row mt-3"><button type="submit">Сохранить</button><button type="button" class="secondary" id="u-reset">Очистить</button></div>
                 <p id="user-msg" class="small mt-2" role="status"></p>
               </form>
               <form class="panel" id="team-form">
                 <h2>Команды</h2>
+                <p class="muted small">Состав команды задаётся у пользователя. Руководитель видит менеджеров своей <b>текущей</b> команды — вместе с их прошлыми тренировками.</p>
                 <div id="team-list" class="small"></div>
-                <div class="row mt-2"><label class="sr-only" for="team-name">Название команды</label><input type="text" id="team-name" class="flex-1" placeholder="Название команды" required /><button type="submit">Добавить</button></div>
+                <div class="row mt-2"><label class="sr-only" for="team-name">Название команды</label><input type="text" id="team-name" class="flex-1" placeholder="Название новой команды" required /><button type="submit">Добавить</button></div>
                 <p id="team-msg" class="small mt-2" role="status"></p>
               </form>
             </div>
@@ -77,10 +86,16 @@
 
         <section id="tab-audit" class="hidden">
           <div class="panel">
-            <div class="section-head"><h2>События</h2><span class="spacer"></span>
-              <label class="sr-only" for="audit-filter">Тип объекта</label>
-              <select id="audit-filter"><option value="">Все</option><option value="session">Тренировки</option><option value="scenario">Сценарии</option><option value="knowledge_base">База знаний</option><option value="user">Пользователи</option><option value="team">Команды</option></select></div>
-            <div class="table-wrap"><table id="audit-table"></table></div>
+            <h2>События</h2>
+            <form class="form-grid filters" id="audit-form" role="search">
+              <div class="field"><label for="audit-filter">Тип объекта</label>
+                <select id="audit-filter"><option value="">Все</option><option value="session">Тренировки</option><option value="scenario">Сценарии</option><option value="knowledge_base">База знаний</option><option value="user">Пользователи</option><option value="team">Команды</option></select></div>
+              <div class="field"><label for="audit-action">Действие</label><select id="audit-action"><option value="">Все действия</option></select></div>
+              <div class="field"><label for="audit-actor">Кто (логин или его часть)</label><input type="search" id="audit-actor" autocomplete="off" /></div>
+              <div class="field"><span class="field-label">&nbsp;</span><button type="submit" class="secondary">Показать</button></div>
+            </form>
+            <p class="muted small m-0">Показаны последние 300 событий по фильтру. Пароли, тексты разговоров и содержимое контента в журнал не пишутся.</p>
+            <div class="table-wrap"><table id="audit-table" class="stack-table"></table></div>
           </div>
         </section>
       </div>

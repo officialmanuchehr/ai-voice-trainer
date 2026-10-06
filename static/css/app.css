@@ -729,3 +729,8 @@ div.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(
 div.field > label:not(.checkbox-row), div.field > .field-label { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text-secondary); margin: 0; }
 div.field code { word-break: break-word; }
 .weights .checkbox-row { justify-content: flex-start; }
+
+/* ===================================================== Phase 8: admin */
+.filters { align-items: end; }
+.users-grid { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
+@media (max-width: 900px) { .users-grid { grid-template-columns: 1fr; } }

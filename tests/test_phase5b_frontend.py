@@ -78,7 +78,7 @@ def test_training_page_no_longer_loads_history():
 
 
 def test_manager_lands_on_overview():
-    assert "{ manager: '/overview', sales_lead: '/dashboard' }[user.role] || '/'" in (STATIC / "js" / "pages" / "login.js").read_text(encoding="utf-8")
+    assert "{ manager: '/overview', sales_lead: '/dashboard', product: '/queue', compliance: '/queue' }[user.role] || '/'" in (STATIC / "js" / "pages" / "login.js").read_text(encoding="utf-8")
 
 
 def test_anonymous_gets_only_the_static_shell_and_no_data(server):

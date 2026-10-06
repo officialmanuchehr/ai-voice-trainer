@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. **Phase 5A implemented** (A1-2 live training screen, A1-3 results; catalogue and briefing); see `PHASE_5A_IMPLEMENTATION.md`. **Fix:** historical analytics bound to the session's scenario version; see `FIX_HISTORICAL_ANALYTICS_BINDING.md`. **Phase 5B implemented** (A1-4 Manager Overview, My Progress, History and `GET /me/progress`); see `PHASE_5B_IMPLEMENTATION.md`. **Phase 6 implemented** (sales lead overview, team view and manager drill-down; lead access narrowed to managers of the lead's team; `needs_help` thresholds removed). A1-10 is only partly covered: the team table is alphabetical by decision, not sortable or filterable. See `PHASE_6_IMPLEMENTATION.md`. **Phase 7 implemented** (A1-7 structured scenario and KB editors; read-only JSON view; no diff vs the live version yet); see `PHASE_7_IMPLEMENTATION.md`. **Bank content blocker C-9:** the published `merchant_onboarding` KB 1.0.0 contains an unconfirmed tax statement (`obj_taxes`), so product content is not fully pilot-approved. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. **Phase 5A implemented** (A1-2 live training screen, A1-3 results; catalogue and briefing); see `PHASE_5A_IMPLEMENTATION.md`. **Fix:** historical analytics bound to the session's scenario version; see `FIX_HISTORICAL_ANALYTICS_BINDING.md`. **Phase 5B implemented** (A1-4 Manager Overview, My Progress, History and `GET /me/progress`); see `PHASE_5B_IMPLEMENTATION.md`. **Phase 6 implemented** (sales lead overview, team view and manager drill-down; lead access narrowed to managers of the lead's team; `needs_help` thresholds removed). A1-10 is only partly covered: the team table is alphabetical by decision, not sortable or filterable. See `PHASE_6_IMPLEMENTATION.md`. **Phase 7 implemented** (A1-7 structured scenario and KB editors; read-only JSON view; no diff vs the live version yet); see `PHASE_7_IMPLEMENTATION.md`. **Bank content blocker C-9:** the published `merchant_onboarding` KB 1.0.0 contains an unconfirmed tax statement (`obj_taxes`), so product content is not fully pilot-approved. **Phase 8 implemented** (work queue, audit filters and readable details, user search/filters/confirmations, org analytics limited to managers, refused-session state); see `PHASE_8_IMPLEMENTATION.md`, which also holds the consolidated bank-decision register and readiness classification. Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -50,10 +50,10 @@ This is tracked as **A1-0** (S).
 | A1-2 ✅ | Live training screen redesign (§5) — Phase 5A | P1-3 | M |
 | A1-3 ✅ | Results page redesign (§6) and `cap_reason` display — Phase 5A | P1-4 | M |
 | A1-4 ✅ | Manager Overview, My Progress, History (§4.2) and endpoint `GET /me/progress` — Phase 5B | P1-5 | M |
-| A1-5 | Compliance access to disputed scores: list, open session read-only, dispute status (open/reviewed) and reviewer note | P1-6 | M |
-| A1-6 | Approvals queue (pending scenario and KB versions) for approver roles; KB → dependent scenarios view; warning and confirmation before archiving a KB that live scenarios use | P1-7 | M |
+| A1-5 | Compliance access to disputed scores: list, open session read-only, dispute status (open/reviewed) and reviewer note — *open: waits for B-2; needs additive dispute-status fields* | P1-6 | M |
+| A1-6 ✅ | Approvals queue (pending scenario and KB versions) for approver roles; KB → dependent scenarios view; warning and confirmation before archiving a KB that live scenarios use — Phase 8 (queue via `can_transition`; archive confirmation lists live scenarios) | P1-7 | M |
 | A1-7 ✅ | Structured editors for KB, scenario, client profile and scoring config, with advanced JSON view kept (§7) — Phase 7; the JSON view is read-only and the diff against the live version is not built yet | P1-8 | L |
-| A1-8 | Admin: user search/filter, teams (lead, rename, deactivate, stats), confirmation dialogs | P1-9 | M |
+| A1-8 | Admin: user search/filter, teams (lead, rename, deactivate, stats), confirmation dialogs — *partly, Phase 8: search, filters, confirmations, member counts; team rename/deactivate/lead not built* | P1-9 | M |
 | A1-9 ✅ | Hide `/docs`, `/redoc` and `/openapi.json` in production; security headers (CSP, frame-ancestors, Referrer-Policy, X-Content-Type-Options) | P2-1, P2-2 | S |
 | A1-10 | Lead workspace: sortable/filterable team table; separate Team and Performance views | P2-15, §11 | M |
 | A1-11 | Training and catalogue duration hint (approximate minutes per difficulty, configurable per scenario, not invented per product) | §7 | S |
@@ -63,7 +63,7 @@ This is tracked as **A1-0** (S).
 
 | ID | Task | Size |
 |---|---|---|
-| A2-1 | Audit completeness: old → new values on `user.edit`; `session.finish`, `scoring.failed`, `auth.logout`, `team.edit` | S |
+| A2-1 | Audit completeness: old → new values on `user.edit`; `session.finish`, `scoring.failed`, `auth.logout`, `team.edit` — *partly, Phase 8: `user.edit` now records old → new values* | S |
 | A2-2 | Input limits: manager text length, audio size, per-user turn rate | S |
 | A2-3 | Cookie revocation: per-user `token_version` column bumped on logout-all or password reset (additive migration) | S |
 | A2-4 | Persona-break guard line in the AI client prompt, plus a prompt test | S |
@@ -449,3 +449,26 @@ No infrastructure migration is part of this plan.
 **Outside this plan (P3):** multi-tenancy (A3-1, after Alembic A2-7), SSO implementation unless mandated, product management page, billing.
 
 **Critical path:** Phases 1 → 2 → 3 are short, server-only and unblock everything else. Phase 4 is the largest engineering risk. Phase 10 is the largest schedule risk, because it waits on bank content and decisions. **Request C-1…C-7 and B-1…B-4 from the bank now,** in parallel with Phase 1.
+
+---
+
+## Remaining gates before deployment (after Phase 8)
+
+Full detail: `PHASE_8_IMPLEMENTATION.md`.
+- **Engineering P0:** none known.
+- **Engineering P1:**
+  - A2-2 input limits;
+  - A2-4 persona-break guard;
+  - A2-6 CI;
+  - A2-11 local production credentials (process);
+  - dispute review fields after B-2.
+- **Bank decisions:** B-1…B-14, plus B-15 (historical team membership and deactivated managers in team numbers) and B-16 (compliance seeing per-manager score events in the audit log).
+- **Bank content:** C-1…C-9. C-9 (`obj_taxes`) blocks declaring the merchant content pilot-approved.
+- **Pilot QA (Phase 9):**
+  - real-provider gate run (paid, needs approval);
+  - voice latency on Vercel;
+  - microphone and audio on bank devices;
+  - STT quality;
+  - deployment checklist and backup/restore;
+  - six-role walkthrough on the deployed build.
+
