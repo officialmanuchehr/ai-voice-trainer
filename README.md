@@ -22,7 +22,7 @@
 знаний, журнал действий, дашборд руководителя, админка, история и повтор
 тренировок, оспаривание оценки, замер времени ответа AI-клиента.
 Развёрнуто на Vercel + Neon: https://ai-voice-trainer-weld.vercel.app
-(см. `VERCEL_DEPLOY.md`).
+(см. раздел «Деплой на Vercel» ниже).
 
 ## Роли, админка, дашборд (Блок 4)
 
@@ -418,8 +418,7 @@ ls -la data/
 ## Деплой на Vercel
 
 Файлы: `api/index.py` (ASGI-точка входа), `vercel.json`, `scripts/init_db.py`,
-`.vercelignore`. Пошаговая инструкция и список переменных окружения —
-`VERCEL_DEPLOY.md`.
+`.vercelignore`.
 
 Ключевые отличия от Railway (serverless не держит процесс между запросами):
 

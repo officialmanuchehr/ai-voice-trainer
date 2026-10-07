@@ -1,4 +1,4 @@
-"""Phase 1 (PILOT_READINESS_PLAN.md): A0-1 unreviewed-KB guard, A0-5 explained
+"""Phase 1: A0-1 unreviewed-KB guard, A0-5 explained
 score cap, A1-0 approval policy hook (no behaviour change).
 
 Same setup as test_access.py — in-process app, throwaway SQLite, stub

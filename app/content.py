@@ -67,7 +67,7 @@ def can_transition(user: User, version: ScenarioVersion | KnowledgeBase, target:
     app/security.py. `version.author` and `version.approved_by` are available
     here deliberately: rules that depend on who wrote or approved a version
     (e.g. "the approver must not be the author") belong in this function once
-    the bank confirms them (PILOT_READINESS_PLAN.md, B-1/B-2) — not in the
+    the bank confirms them (decisions B-1/B-2) — not in the
     endpoints."""
     edit_roles, approve_roles, publish_roles = _roles_for(version)
     current = version.status
