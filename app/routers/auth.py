@@ -7,6 +7,7 @@ from app.audit import audit
 from app.config import settings
 from app.database import SessionLocal
 from app.http_security import request_id_var
+from app.limits import MAX_PASSWORD_CHARS, MAX_USERNAME_CHARS, check_chars
 from app.login_guard import (
     attempt_key,
     clear_failures,
@@ -54,6 +55,8 @@ def _throttled(seconds: int) -> JSONResponse:
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
+    check_chars(body.username, MAX_USERNAME_CHARS, "Логин")
+    check_chars(body.password, MAX_PASSWORD_CHARS, "Пароль")
     ip = client_ip(request)
     key = attempt_key(body.username, ip)
     async with SessionLocal() as db:

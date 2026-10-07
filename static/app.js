@@ -198,7 +198,7 @@ async function renderResult(el, data, { onDispute } = {}) {
   } else if (onDispute) {
     area.innerHTML = `<h3>Не согласны с оценкой?</h3>
       <label class="sr-only" for="dispute-text">Ваше возражение</label>
-      <textarea id="dispute-text" placeholder="Опишите, с чем вы не согласны — команда обучения посмотрит"></textarea>
+      <textarea id="dispute-text" maxlength="2000" placeholder="Опишите, с чем вы не согласны — команда обучения посмотрит"></textarea>
       <div class="row mt-2"><button type="button" class="secondary" id="dispute-btn">Отправить возражение</button><span id="dispute-msg" class="small" role="status"></span></div>`;
     area.querySelector('#dispute-btn').addEventListener('click', async (e) => {
       const text = area.querySelector('#dispute-text').value.trim();

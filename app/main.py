@@ -23,9 +23,11 @@ from app.constants import STT_VOCABULARY
 from app.content import published_kb, session_content, topic_list
 from app.database import Base, SessionLocal, engine
 from app.http_security import RequestContextMiddleware, request_id_var, security_headers
+from app.limits import MAX_AUDIO_BYTES, MAX_DISPUTE_CHARS, MAX_MANAGER_TURNS, MAX_TURN_CHARS, check_chars
 from app.models import ClaimCheck, Feedback, KnowledgeBase, Product, Scenario, ScenarioVersion, Score, User
 from app.models import Session as SessionModel
 from app.models import TranscriptTurn
+from app.persona_guard import guard_client_reply
 from app.prompts import build_client_system_prompt
 from app.redact import RedactingFilter, redact
 from app.providers.factory import get_dialog_provider, get_scoring_provider, get_stt_provider, get_tts_provider
@@ -147,8 +149,22 @@ async def init_db() -> None:
         await load_seed(db)
 
 
+def stub_providers_in_production() -> list[str]:
+    """Providers still on the stub while the app runs on a real database —
+    a deployment misconfiguration that would give pilot users fake AI replies
+    and scores (deployment checklist; warned at startup)."""
+    if settings.database_url.startswith("sqlite"):
+        return []
+    modes = {"STT_PROVIDER": settings.stt_provider, "DIALOG_PROVIDER": settings.dialog_provider,
+             "SCORING_PROVIDER": settings.scoring_provider, "TTS_PROVIDER": settings.tts_provider}
+    return [name for name, mode in modes.items() if mode == "stub"]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    stubbed = stub_providers_in_production()
+    if stubbed:
+        logger.warning("STUB AI PROVIDERS on a non-SQLite database: %s — replies and scores are fake", ", ".join(stubbed))
     if settings.auto_init_db:
         await init_db()
     yield
@@ -442,6 +458,7 @@ async def _process_manager_turn(db: AsyncSession, session_id: str, manager_text:
         raise HTTPException(status_code=400, detail=f"session is not active (status={session.status})")
     if not manager_text.strip():
         raise HTTPException(status_code=400, detail="пустая реплика — речь не распознана")
+    check_chars(manager_text, MAX_TURN_CHARS, "Реплика")
 
     content, kb = await session_content(db, session)
     client_profile = session.client_profile or content["client_profile"]
@@ -450,6 +467,11 @@ async def _process_manager_turn(db: AsyncSession, session_id: str, manager_text:
         select(func.max(TranscriptTurn.turn_index)).where(TranscriptTurn.session_id == session_id)
     )
     next_index = (max_index or 0) + 1
+    manager_turns = await db.scalar(
+        select(func.count()).select_from(TranscriptTurn).where(TranscriptTurn.session_id == session_id, TranscriptTurn.role == "manager")
+    )
+    if manager_turns >= MAX_MANAGER_TURNS:
+        raise HTTPException(status_code=422, detail=f"достигнут предел тренировки ({MAX_MANAGER_TURNS} реплик) — завершите её и получите оценку")
 
     manager_turn = TranscriptTurn(
         session_id=session_id,
@@ -473,6 +495,10 @@ async def _process_manager_turn(db: AsyncSession, session_id: str, manager_text:
     # and the caller's session rolls back — the transcript stays as it was.
     ai_text = await _call_service("dialog_unavailable", dialog_provider.respond(system_prompt, messages))
     latency_ms = round((time.perf_counter() - started) * 1000)
+    # A2-4: a reply that breaks the simulation is replaced, never shown.
+    ai_text, persona_reason = guard_client_reply(ai_text)
+    if persona_reason:
+        logger.warning("persona guard replaced an AI-client reply (%s) for session %s [request_id=%s]", persona_reason, session_id, request_id_var.get())
 
     ai_turn = TranscriptTurn(
         session_id=session_id,
@@ -504,7 +530,10 @@ async def post_voice_turn(session_id: str, audio: UploadFile = File(...), user: 
     async with SessionLocal() as db:
         # Fail fast before spending an STT call on someone else's session.
         await _load_session(db, session_id, user, write=True)
-    audio_bytes = await audio.read()
+    audio_bytes = await audio.read(MAX_AUDIO_BYTES + 1)
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        del audio_bytes
+        raise HTTPException(status_code=413, detail="запись слишком длинная — скажите реплику короче или напишите её текстом")
     try:
         manager_text = await _call_service("stt_unavailable", stt_provider.transcribe(audio_bytes, "ru", STT_VOCABULARY))
     finally:
@@ -829,12 +858,13 @@ async def dispute_score(session_id: str, body: DisputeRequest, user: User = Depe
     comment = body.comment.strip()
     if not comment:
         raise HTTPException(status_code=400, detail="опишите, с чем вы не согласны")
+    check_chars(comment, MAX_DISPUTE_CHARS, "Комментарий")
     async with SessionLocal() as db:
         session = await _load_session(db, session_id, user, write=True)
         score = await db.scalar(select(Score).where(Score.session_id == session.id))
         if score is None:
             raise HTTPException(status_code=400, detail="сессия ещё не оценена")
-        score.dispute_comment = comment[:2000]
+        score.dispute_comment = comment
         score.disputed_at = datetime.now(timezone.utc)
         audit(db, user, "score.dispute", "session", session.id, {"total": score.total})
         await db.commit()

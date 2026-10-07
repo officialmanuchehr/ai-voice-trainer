@@ -6,10 +6,13 @@ in the X-Request-ID response header, exposed to handlers via
 so a user-reported error can be matched to its log line.
 """
 
+import json
 import uuid
 from contextvars import ContextVar
 
 from starlette.datastructures import MutableHeaders
+
+from app.limits import MAX_REQUEST_BYTES
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -74,5 +77,14 @@ class RequestContextMiddleware:
                 for name, value in headers_to_add.items():
                     headers[name] = value
             await send(message)
+
+        # A2-2: refuse oversized bodies up front (declared length); a body
+        # without Content-Length is still bounded per field by app/limits.py.
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
+            body = json.dumps({"code": "too_large", "detail": "Запрос слишком большой.", "request_id": request_id}, ensure_ascii=False).encode()
+            await send_with_headers({"type": "http.response.start", "status": 413, "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+            await send({"type": "http.response.body", "body": body})
+            return
 
         await self.app(scope, receive, send_with_headers)

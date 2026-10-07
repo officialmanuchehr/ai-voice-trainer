@@ -1,7 +1,7 @@
 # Pilot Readiness Plan — AI Voice Trainer (Bank Eskhata pilot)
 
 **Date:** 2026-10-05 · **Source of truth:** `PILOT_READINESS_AUDIT.md` (commit `da4b55d`)
-**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. **Phase 5A implemented** (A1-2 live training screen, A1-3 results; catalogue and briefing); see `PHASE_5A_IMPLEMENTATION.md`. **Fix:** historical analytics bound to the session's scenario version; see `FIX_HISTORICAL_ANALYTICS_BINDING.md`. **Phase 5B implemented** (A1-4 Manager Overview, My Progress, History and `GET /me/progress`); see `PHASE_5B_IMPLEMENTATION.md`. **Phase 6 implemented** (sales lead overview, team view and manager drill-down; lead access narrowed to managers of the lead's team; `needs_help` thresholds removed). A1-10 is only partly covered: the team table is alphabetical by decision, not sortable or filterable. See `PHASE_6_IMPLEMENTATION.md`. **Phase 7 implemented** (A1-7 structured scenario and KB editors; read-only JSON view; no diff vs the live version yet); see `PHASE_7_IMPLEMENTATION.md`. **Bank content blocker C-9:** the published `merchant_onboarding` KB 1.0.0 contains an unconfirmed tax statement (`obj_taxes`), so product content is not fully pilot-approved. **Phase 8 implemented** (work queue, audit filters and readable details, user search/filters/confirmations, org analytics limited to managers, refused-session state); see `PHASE_8_IMPLEMENTATION.md`, which also holds the consolidated bank-decision register and readiness classification. Nothing else is implemented yet.
+**Status:** plan for review. **Phase 1 implemented** (A0-1, A0-5, A1-0); see `PHASE_1_IMPLEMENTATION.md`. **Phase 1b implemented** (three bugs found at the start of Phase 2: duplicate scoring criteria, fail-open claim verdicts, draft products in `/products`); see `PHASE_1B_IMPLEMENTATION.md`. **Phase 2 test coverage complete** except the rows that depend on Phase 3 behaviour (login throttling, AI provider failures); see `PHASE_2_IMPLEMENTATION.md`. **Phase 3A implemented** (A0-3, A0-4: AI service failure handling); see `PHASE_3A_IMPLEMENTATION.md`. **Phase 3B implemented** (A0-6 login throttling, A1-9 docs off + security headers, plus request IDs, safe 500s, diagnostic redaction); see `PHASE_3B_IMPLEMENTATION.md`. **Phase 4A implemented** (A1-1 design system + app shell; CSP `'unsafe-inline'` removed); see `PHASE_4A_IMPLEMENTATION.md`. **Security hotfix:** `esc()` now escapes quotes (stored attribute injection); see `SECURITY_HOTFIX_HTML_ESCAPING.md`. **Phase 5A implemented** (A1-2 live training screen, A1-3 results; catalogue and briefing); see `PHASE_5A_IMPLEMENTATION.md`. **Fix:** historical analytics bound to the session's scenario version; see `FIX_HISTORICAL_ANALYTICS_BINDING.md`. **Phase 5B implemented** (A1-4 Manager Overview, My Progress, History and `GET /me/progress`); see `PHASE_5B_IMPLEMENTATION.md`. **Phase 6 implemented** (sales lead overview, team view and manager drill-down; lead access narrowed to managers of the lead's team; `needs_help` thresholds removed). A1-10 is only partly covered: the team table is alphabetical by decision, not sortable or filterable. See `PHASE_6_IMPLEMENTATION.md`. **Phase 7 implemented** (A1-7 structured scenario and KB editors; read-only JSON view; no diff vs the live version yet); see `PHASE_7_IMPLEMENTATION.md`. **Bank content blocker C-9:** the published `merchant_onboarding` KB 1.0.0 contains an unconfirmed tax statement (`obj_taxes`), so product content is not fully pilot-approved. **Phase 8 implemented** (work queue, audit filters and readable details, user search/filters/confirmations, org analytics limited to managers, refused-session state); see `PHASE_8_IMPLEMENTATION.md`, which also holds the consolidated bank-decision register and readiness classification. **Phase 9 (pilot QA)** done in engineering: A2-2 input limits, A2-4 persona guard, A2-6 CI, stub-provider startup warning, acceptance tests (730 passing). See `PHASE_9_LAUNCH_READINESS.md`, `PILOT_ACCEPTANCE_MATRIX.md`, `DEPLOYMENT_CHECKLIST.md`, `BANK_PILOT_DECISIONS.md`, `PILOT_CONTENT_GATE.md` and `PILOT_RUNBOOK.md`. **Pilot status: NO-GO today** (bank decisions, content, real-provider gate). Nothing else is implemented yet.
 
 **Categories**
 - **A — We can implement now:** technical/product work that needs no bank decision.
@@ -64,16 +64,16 @@ This is tracked as **A1-0** (S).
 | ID | Task | Size |
 |---|---|---|
 | A2-1 | Audit completeness: old → new values on `user.edit`; `session.finish`, `scoring.failed`, `auth.logout`, `team.edit` — *partly, Phase 8: `user.edit` now records old → new values* | S |
-| A2-2 | Input limits: manager text length, audio size, per-user turn rate | S |
+| A2-2 ✅ | Input limits: manager text length, audio size, per-user turn rate — Phase 9 (`app/limits.py`; per-user rate limit not built, post-pilot) | S |
 | A2-3 | Cookie revocation: per-user `token_version` column bumped on logout-all or password reset (additive migration) | S |
-| A2-4 | Persona-break guard line in the AI client prompt, plus a prompt test | S |
+| A2-4 ✅ | Persona-break guard line in the AI client prompt, plus a prompt test — Phase 9 (prompt rules + deterministic reply guard) | S |
 | A2-5 | Unique `(session_id, turn_index)` constraint (additive; check existing data first) | S |
-| A2-6 | CI: GitHub Actions running `pytest` on push and PR | S |
+| A2-6 ✅ | CI: GitHub Actions running `pytest` on push and PR — Phase 9 (`.github/workflows/tests.yml`) | S |
 | A2-7 | Adopt Alembic: baseline the current schema, keep `init_db` as wrapper | M |
 | A2-8 | Dashboard aggregation moved to SQL (only if pilot volume requires it) | M |
 | A2-9 | Remove stale comments and README paths; `init_db` step in the deploy checklist | S |
 | A2-10 | Move `STT_VOCABULARY` to config (also a P3 enabler) | S |
-| A2-11 | Remove production DB credentials from the local `.env.local` (process, not code) | S |
+| A2-11 | Remove production DB credentials from the local `.env.local` (process, not code) — *Phase 9: process item in `DEPLOYMENT_CHECKLIST.md` G (the app never reads `.env.local`; nothing committed)* | S |
 
 #### P3 — Future SaaS (not in the pilot)
 - **A3-1** Organizations and multi-tenancy (audit §7). Needs A2-7 first.
@@ -456,15 +456,13 @@ No infrastructure migration is part of this plan.
 
 Full detail: `PHASE_8_IMPLEMENTATION.md`.
 - **Engineering P0:** none known.
-- **Engineering P1:**
-  - A2-2 input limits;
-  - A2-4 persona-break guard;
-  - A2-6 CI;
-  - A2-11 local production credentials (process);
+- **Engineering P1:** A2-2, A2-4 and A2-6 were done in Phase 9. What remains:
+  - config: separate the Preview database and set `CLIENT_IP_HEADER`;
+  - A2-11 (process);
   - dispute review fields after B-2.
 - **Bank decisions:** B-1…B-14, plus B-15 (historical team membership and deactivated managers in team numbers) and B-16 (compliance seeing per-manager score events in the audit log).
 - **Bank content:** C-1…C-9. C-9 (`obj_taxes`) blocks declaring the merchant content pilot-approved.
-- **Pilot QA (Phase 9):**
+- **Pilot QA:** the Phase 9 plan is in `PHASE_9_LAUNCH_READINESS.md` §11. Still open:
   - real-provider gate run (paid, needs approval);
   - voice latency on Vercel;
   - microphone and audio on bank devices;

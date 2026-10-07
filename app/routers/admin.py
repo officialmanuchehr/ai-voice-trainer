@@ -27,6 +27,17 @@ from app.content import (
     validate_scenario_content,
 )
 from app.database import SessionLocal
+from app.limits import (
+    MAX_KB_BYTES,
+    MAX_NAME_CHARS,
+    MAX_NOTES_CHARS,
+    MAX_PASSWORD_CHARS,
+    MAX_SCENARIO_BYTES,
+    MAX_USERNAME_CHARS,
+    MAX_VERSION_CHARS,
+    check_chars,
+    check_document,
+)
 from app.models import CONTENT_STATUSES, AuditLog, KnowledgeBase, Product, Scenario, ScenarioVersion, Team, User
 from app.security import (
     CONTENT_VIEW_ROLES,
@@ -164,6 +175,7 @@ class ScenarioBody(BaseModel):
 
 @router.post("/scenarios")
 async def create_scenario(body: ScenarioBody, user: User = Depends(require_roles(*SCENARIO_EDIT_ROLES))):
+    check_document(body.data, MAX_SCENARIO_BYTES, "Сценарий")
     async with SessionLocal() as db:
         content = validate_scenario_content(body.data, await _product_ids(db))
         slug = re.sub(r"[^a-z0-9_]", "", content["product_id"].lower())
@@ -190,6 +202,7 @@ async def create_scenario(body: ScenarioBody, user: User = Depends(require_roles
 async def edit_scenario(scenario_id: str, body: ScenarioBody, user: User = Depends(require_roles(*SCENARIO_EDIT_ROLES))):
     """Edits the latest version if it is still a draft; otherwise starts a new
     draft version. The published version keeps serving managers meanwhile."""
+    check_document(body.data, MAX_SCENARIO_BYTES, "Сценарий")
     async with SessionLocal() as db:
         if await db.get(Scenario, scenario_id) is None:
             raise HTTPException(status_code=404, detail="сценарий не найден")
@@ -329,6 +342,10 @@ async def create_kb_version(product_id: str, body: NewKbVersion, user: User = De
     version = body.version.strip()
     if not version:
         raise HTTPException(status_code=422, detail="укажите номер версии")
+    check_chars(version, MAX_VERSION_CHARS, "Номер версии")
+    check_chars(body.notes, MAX_NOTES_CHARS, "Комментарий к версии")
+    if body.data is not None:
+        check_document(body.data, MAX_KB_BYTES, "База знаний")
     if not _PRODUCT_ID_RE.fullmatch(product_id):
         raise HTTPException(status_code=422, detail="id продукта: 2–40 символов a-z, 0-9, _")
     async with SessionLocal() as db:
@@ -370,6 +387,8 @@ class KbEdit(BaseModel):
 
 @router.put("/kb/{product_id}/versions/{version}")
 async def edit_kb_version(product_id: str, version: str, body: KbEdit, user: User = Depends(require_roles(*KB_EDIT_ROLES))):
+    check_document(body.data, MAX_KB_BYTES, "База знаний")
+    check_chars(body.notes, MAX_NOTES_CHARS, "Комментарий к версии")
     async with SessionLocal() as db:
         kb = await _kb_version(db, product_id, version)
         if kb.status != "draft":
@@ -498,7 +517,10 @@ class NewUser(BaseModel):
     team_id: int | None = None
 
 
-def _check_user_fields(role: str, password: str | None) -> None:
+def _check_user_fields(role: str, password: str | None, full_name: str = "", username: str = "") -> None:
+    check_chars(username, MAX_USERNAME_CHARS, "Логин")
+    check_chars(full_name, MAX_NAME_CHARS, "ФИО")
+    check_chars(password, MAX_PASSWORD_CHARS, "Пароль")
     if role not in ROLES:
         raise HTTPException(status_code=422, detail="неизвестная роль")
     if password is not None and len(password) < 8:
@@ -507,7 +529,7 @@ def _check_user_fields(role: str, password: str | None) -> None:
 
 @router.post("/users")
 async def create_user(body: NewUser, user: User = Depends(_admin)):
-    _check_user_fields(body.role, body.password)
+    _check_user_fields(body.role, body.password, body.full_name, body.username)
     username = body.username.strip()
     if not username:
         raise HTTPException(status_code=422, detail="укажите логин")
@@ -539,7 +561,7 @@ class EditUser(BaseModel):
 @router.put("/users/{user_id}")
 async def edit_user(user_id: str, body: EditUser, user: User = Depends(_admin)):
     password = body.password or None
-    _check_user_fields(body.role, password)
+    _check_user_fields(body.role, password, body.full_name)
     if user_id == user.id and (not body.is_active or body.role != "admin"):
         raise HTTPException(status_code=400, detail="нельзя отключить себя или снять с себя роль администратора")
     async with SessionLocal() as db:
@@ -582,6 +604,7 @@ async def create_team(body: NewTeam, user: User = Depends(_admin)):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="укажите название")
+    check_chars(name, MAX_NAME_CHARS, "Название команды")
     async with SessionLocal() as db:
         if await db.scalar(select(Team).where(Team.name == name)) is not None:
             raise HTTPException(status_code=409, detail="такая команда уже есть")
