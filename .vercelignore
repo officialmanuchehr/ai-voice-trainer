@@ -1,0 +1,12 @@
+.venv
+.git
+.claude
+data
+tests
+seed/*.md
+README.md
+Dockerfile
+.dockerignore
+railway.json
+*.pyc
+__pycache__

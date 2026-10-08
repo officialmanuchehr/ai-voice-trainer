@@ -3,475 +3,146 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI Voice Trainer — тренировка звонка</title>
-<style>
-  :root {
-    color-scheme: light dark;
-    --bg: #f5f6f8;
-    --panel: #ffffff;
-    --text: #1a1a1a;
-    --muted: #666;
-    --border: #ddd;
-    --manager: #2563eb;
-    --client: #16a34a;
-    --accent: #2563eb;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16171a;
-      --panel: #212226;
-      --text: #eaeaea;
-      --muted: #9a9a9a;
-      --border: #33343a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-  }
-  .layout {
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-height: 100vh;
-  }
-  h1 { font-size: 1.3rem; margin: 0; }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px;
-  }
-  #context div { margin-bottom: 4px; font-size: 0.92rem; }
-  #context .label { color: var(--muted); }
-  #chat {
-    flex: 1;
-    min-height: 320px;
-    max-height: 55vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .bubble {
-    max-width: 80%;
-    padding: 10px 14px;
-    border-radius: 14px;
-    line-height: 1.4;
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-  }
-  .bubble.manager {
-    align-self: flex-end;
-    background: var(--manager);
-    color: white;
-    border-bottom-right-radius: 4px;
-  }
-  .bubble.ai_client {
-    align-self: flex-start;
-    background: rgba(22, 163, 74, 0.12);
-    border: 1px solid var(--client);
-    border-bottom-left-radius: 4px;
-  }
-  .bubble.system {
-    align-self: center;
-    color: var(--muted);
-    font-size: 0.82rem;
-  }
-  .controls { display: flex; gap: 8px; align-items: center; }
-  input[type=text] {
-    flex: 1;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--text);
-    font-size: 0.95rem;
-  }
-  button {
-    padding: 10px 16px;
-    border-radius: 10px;
-    border: none;
-    background: var(--accent);
-    color: white;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-  button:disabled { opacity: 0.45; cursor: not-allowed; }
-  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  button.mic { background: #6b7280; }
-  #processing {
-    display: none;
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
-  #processing.show { display: block; }
-
-  #result h2 { margin-top: 0; }
-  .score-total { font-size: 2rem; font-weight: 700; }
-  .score-total.low { color: #dc2626; }
-  .score-total.high { color: #16a34a; }
-  .criterion { border-bottom: 1px solid var(--border); padding: 10px 0; }
-  .criterion:last-child { border-bottom: none; }
-  .criterion-head { display: flex; justify-content: space-between; font-weight: 600; }
-  .criterion-reason { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
-  .criterion-quote { font-style: italic; font-size: 0.85rem; margin-top: 4px; border-left: 3px solid var(--accent); padding-left: 8px; }
-  .critical-box { background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; border-radius: 8px; padding: 10px; margin: 6px 0; font-size: 0.88rem; }
-  .better-example { font-size: 0.88rem; margin: 6px 0; }
-  .better-example .was { color: #dc2626; }
-  .better-example .better { color: #16a34a; }
-  .claim-row { font-size: 0.85rem; padding: 4px 0; border-bottom: 1px dotted var(--border); }
-  .verdict-approved { color: #16a34a; font-weight: 600; }
-  .verdict-unapproved { color: #d97706; font-weight: 600; }
-  .verdict-forbidden { color: #dc2626; font-weight: 600; }
-</style>
+<title>Тренировка — AI Voice Trainer</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/static/css/app.css" />
+<script src="/static/theme.js"></script>
 </head>
 <body>
-<div class="layout">
-  <h1>AI Voice Trainer — тренировка звонка</h1>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
+<div class="app-shell" id="app-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Основная навигация"></aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="app-main">
+    <header class="app-header">
+      <button type="button" class="ghost icon-button menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Открыть меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="app-header-titles">
+        <h1 id="page-title">Тренировка</h1>
+        <p class="page-subtitle" id="page-subtitle">Каждый раз генерируется новый клиент. Результаты тренировок не влияют на KPI.</p>
+      </div>
+      <div class="app-header-actions" id="page-actions"></div>
+    </header>
 
-  <div class="panel" id="context">Загрузка сценария…</div>
+    <main id="main" class="app-content" tabindex="-1">
+      <div class="page narrow">
 
-  <div class="controls">
-    <button id="start-btn">Начать сессию</button>
-    <span id="processing">Обрабатываю…</span>
+        <!-- Catalogue -->
+        <section id="catalog-view" class="stack">
+          <div class="panel">
+            <div class="section-head">
+              <h2>Доступные тренировки</h2><span class="spacer"></span>
+              <label class="sr-only" for="product-filter">Продукт</label>
+              <select id="product-filter"><option value="">Все продукты</option></select>
+              <label class="sr-only" for="topic-filter">Тема</label>
+              <select id="topic-filter"><option value="">Все темы</option></select>
+              <label class="sr-only" for="difficulty-filter">Сложность</label>
+              <select id="difficulty-filter">
+                <option value="">Любая сложность</option>
+                <option value="easy">Лёгкий</option><option value="medium">Средний</option><option value="hard">Сложный</option>
+              </select>
+            </div>
+            <div class="cards" id="cards"><div class="state loading"><div class="spinner" aria-hidden="true"></div><div>Загрузка тренировок…</div></div></div>
+          </div>
+
+          <p class="muted small m-0">Прошлые тренировки и результаты — в разделе <a href="/history">История</a>.</p>
+        </section>
+
+        <!-- Live session -->
+        <section id="session-view" class="hidden stack" aria-label="Тренировка">
+          <div class="panel session-bar">
+            <div class="client-id">
+              <span class="avatar" id="client-avatar" aria-hidden="true">AI</span>
+              <div>
+                <div class="client-name" id="client-name">AI-клиент</div>
+                <div class="client-sub" id="client-sub"></div>
+              </div>
+            </div>
+            <span class="session-timer" role="timer" aria-label="Время тренировки">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg>
+              <span id="timer-value">00:00</span>
+            </span>
+            <div id="finish-row" class="finish-row">
+              <button type="button" class="secondary" id="finish-btn">Завершить тренировку</button>
+            </div>
+          </div>
+          <p class="section-note m-0" id="finish-hint">Завершить можно после первой реплики.</p>
+
+          <details class="panel context" id="session-context">
+            <summary>Задача и контекст</summary>
+            <div class="context-body">
+              <p class="m-0"><span class="muted">Ваша задача:</span> <span id="context-goal"></span></p>
+              <p class="mt-2 mb-2" id="context-learning-row"><span class="muted">Чему учит сценарий:</span> <span id="context-learning"></span></p>
+              <dl class="facts mt-3" id="context-facts"></dl>
+            </div>
+          </details>
+
+          <div class="panel hidden" id="scoring" role="status" aria-live="polite">
+            <h2>Оценка разговора</h2>
+            <ol class="steps">
+              <li class="step" id="step-done" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Разговор завершён</span></li>
+              <li class="step" id="step-analysis" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Анализ<span class="step-note"></span></span></li>
+              <li class="step" id="step-result" data-state="pending"><span class="step-icon" aria-hidden="true"></span><span>Результат готов<span class="step-note"></span></span></li>
+            </ol>
+            <div class="hidden mt-4" id="scoring-error">
+              <div class="alert error" role="alert" id="scoring-error-text"></div>
+              <div class="row mt-3">
+                <button type="button" id="scoring-retry">Повторить оценку</button>
+                <button type="button" class="secondary" id="scoring-back">К списку тренировок</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel hidden" id="result" tabindex="-1" aria-label="Результат тренировки"></div>
+          <div class="row hidden" id="after-actions">
+            <button type="button" id="repeat-btn">Пройти сценарий ещё раз</button>
+            <button type="button" class="secondary" id="back-btn">К списку тренировок</button>
+          </div>
+
+          <section class="panel" aria-labelledby="transcript-title">
+            <h2 id="transcript-title" class="sr-only">Разговор</h2>
+            <div id="chat" class="transcript" aria-live="polite"></div>
+          </section>
+
+          <div class="panel composer-panel" id="composer">
+            <div class="voice-state" id="voice-state" data-state="ready" role="status" aria-live="polite">
+              <span class="dot" aria-hidden="true"></span><span id="voice-state-text"></span>
+            </div>
+            <div class="composer">
+              <button type="button" id="mic-btn" aria-pressed="false" aria-describedby="voice-state-text">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg>
+                <span id="mic-label">Удерживать и говорить</span>
+              </button>
+              <label class="sr-only" for="text-input">Реплика текстом</label>
+              <input type="text" id="text-input" maxlength="2000" placeholder="…или напишите реплику и нажмите Enter" autocomplete="off" />
+              <button type="button" id="send-btn">Отправить</button>
+            </div>
+          </div>
+        </section>
+
+        <audio id="audio-player" class="hidden"></audio>
+      </div>
+    </main>
   </div>
-
-  <div class="panel" id="chat"></div>
-
-  <div class="controls">
-    <button class="mic" id="mic-btn" disabled title="Начать сессию, чтобы включить запись">🎤 Удерживать и говорить</button>
-    <input type="text" id="text-input" placeholder="Реплика менеджера…" disabled />
-    <button id="send-btn" disabled>Отправить</button>
-  </div>
-
-  <div class="controls">
-    <button class="secondary" id="finish-btn" disabled>Завершить сессию и оценить</button>
-  </div>
-
-  <div class="panel" id="result" style="display:none"></div>
-
-  <audio id="audio-player" style="display:none"></audio>
 </div>
 
-<script>
-let sessionId = null;
-let currentScenario = null;
+<dialog id="briefing-dlg" aria-labelledby="briefing-title"><div id="briefing-body"></div></dialog>
 
-const contextEl = document.getElementById('context');
-const chatEl = document.getElementById('chat');
-const startBtn = document.getElementById('start-btn');
-const sendBtn = document.getElementById('send-btn');
-const textInput = document.getElementById('text-input');
-const processingEl = document.getElementById('processing');
-const audioPlayer = document.getElementById('audio-player');
-const micBtn = document.getElementById('mic-btn');
-const finishBtn = document.getElementById('finish-btn');
-const resultEl = document.getElementById('result');
+<dialog id="finish-dlg" aria-labelledby="finish-title" aria-describedby="finish-text">
+  <div class="dialog-head"><h2 id="finish-title">Завершить тренировку?</h2></div>
+  <p id="finish-text">Разговор будет закрыт и отправлен на оценку. Продолжить этот разговор после завершения нельзя.</p>
+  <div class="dialog-actions">
+    <button type="button" id="finish-confirm">Завершить и получить оценку</button>
+    <button type="button" class="secondary" id="finish-cancel">Продолжить разговор</button>
+  </div>
+</dialog>
 
-let mediaRecorder = null;
-let recordedChunks = [];
+<div class="toast-region" id="toast-region" aria-live="polite"></div>
 
-async function loadScenario() {
-  const res = await fetch('/scenarios');
-  const scenarios = await res.json();
-  if (!scenarios.length) {
-    contextEl.textContent = 'Сценарии не найдены.';
-    return;
-  }
-  currentScenario = scenarios[0];
-  renderContext();
-}
-
-function renderContext() {
-  const cp = currentScenario.client_profile;
-  contextEl.innerHTML = `
-    <div><span class="label">Продукт:</span> ${currentScenario.product_id}</div>
-    <div><span class="label">Цель звонка:</span> ${currentScenario.goal}</div>
-    <div><span class="label">Клиент:</span> ${cp.business_type}, ${cp.owner}</div>
-    <div><span class="label">Ситуация:</span> ${cp.current_situation}</div>
-    <div><span class="label">Настрой:</span> ${cp.emotion}, доверие к банку — ${cp.trust_level}</div>
-  `;
-}
-
-function addBubble(role, text) {
-  const div = document.createElement('div');
-  div.className = 'bubble ' + role;
-  div.textContent = text;
-  chatEl.appendChild(div);
-  chatEl.scrollTop = chatEl.scrollHeight;
-  return div;
-}
-
-// Wraps fetch so every failure mode (network drop, proxy timeout returning
-// an HTML error page, 4xx/5xx JSON) surfaces as a thrown Error with a
-// readable message, instead of leaving callers to guess why res.json()
-// blew up or silently proceed on a non-ok response.
-async function fetchJson(url, options) {
-  let res;
-  try {
-    res = await fetch(url, options);
-  } catch (err) {
-    throw new Error(`сеть недоступна (${err.message})`);
-  }
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    // response body wasn't JSON — e.g. a proxy/timeout error page
-  }
-  if (!res.ok) {
-    throw new Error((data && data.detail) || `HTTP ${res.status}`);
-  }
-  return data;
-}
-
-async function startSession() {
-  startBtn.disabled = true;
-  const res = await fetch('/sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario_id: currentScenario.id }),
-  });
-  const data = await res.json();
-  sessionId = data.id;
-  chatEl.innerHTML = '';
-  addBubble('system', `Сессия начата (kb_version ${data.kb_version})`);
-  sendBtn.disabled = false;
-  textInput.disabled = false;
-  micBtn.disabled = false;
-  micBtn.title = 'Удерживайте, чтобы записать реплику';
-  finishBtn.disabled = false;
-  resultEl.style.display = 'none';
-  textInput.focus();
-}
-
-async function sendTurn() {
-  const text = textInput.value.trim();
-  if (!text || !sessionId) return;
-  textInput.value = '';
-  addBubble('manager', text);
-  sendBtn.disabled = true;
-
-  const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
-
-  try {
-    const data = await fetchJson(`/sessions/${sessionId}/turns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    addBubble('ai_client', data.ai_client_text);
-
-    audioPlayer.src = `/sessions/${sessionId}/turns/${data.ai_client_turn_index}/audio?ts=${Date.now()}`;
-    audioPlayer.play().catch(() => {});
-  } catch (err) {
-    addBubble('system', 'Ошибка: ' + err.message);
-  } finally {
-    clearTimeout(timer);
-    processingEl.classList.remove('show');
-    sendBtn.disabled = false;
-  }
-}
-
-async function sendVoiceTurn(blob) {
-  const placeholder = addBubble('system', 'Распознаю речь…');
-  micBtn.disabled = true;
-
-  const timer = setTimeout(() => processingEl.classList.add('show'), 2000);
-
-  const form = new FormData();
-  form.append('audio', blob, 'turn.webm');
-
-  try {
-    const data = await fetchJson(`/sessions/${sessionId}/voice-turn`, { method: 'POST', body: form });
-    placeholder.remove();
-    addBubble('manager', data.manager_text);
-    addBubble('ai_client', data.ai_client_text);
-
-    audioPlayer.src = `data:audio/mpeg;base64,${data.ai_client_audio_base64}`;
-    audioPlayer.play().catch(() => {});
-  } catch (err) {
-    placeholder.remove();
-    addBubble('system', 'Ошибка: ' + err.message);
-  } finally {
-    clearTimeout(timer);
-    processingEl.classList.remove('show');
-    micBtn.disabled = false;
-  }
-}
-
-async function startRecording() {
-  if (!sessionId || micBtn.disabled) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-      sendVoiceTurn(blob);
-    };
-    mediaRecorder.start();
-    micBtn.textContent = '🔴 Запись… (отпустите, чтобы отправить)';
-  } catch (err) {
-    addBubble('system', 'Не удалось получить доступ к микрофону: ' + err.message);
-  }
-}
-
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-  }
-  micBtn.textContent = '🎤 Удерживать и говорить';
-}
-
-function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = s == null ? '' : String(s);
-  return div.innerHTML;
-}
-
-async function finishSession() {
-  if (!sessionId) return;
-  finishBtn.disabled = true;
-  sendBtn.disabled = true;
-  micBtn.disabled = true;
-  processingEl.textContent = 'Оцениваю разговор (может занять несколько минут, не закрывайте страницу)…';
-  processingEl.classList.add('show');
-  try {
-    // Check current status first so a retry after a dropped connection resumes
-    // polling instead of re-POSTing /finish onto a scoring job already in flight.
-    let current = null;
-    try { current = await fetchJson(`/sessions/${sessionId}/score`); } catch { /* fall through to POST */ }
-    if (!current || current.status !== 'scoring') {
-      await fetchJson(`/sessions/${sessionId}/finish`, { method: 'POST' });
-    }
-    const data = await pollScore();
-    renderResult(data);
-  } catch (err) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = `<p>Ошибка оценки: ${esc(err.message)}</p>`;
-    finishBtn.disabled = false;
-    sendBtn.disabled = false;
-    micBtn.disabled = false;
-  } finally {
-    processingEl.classList.remove('show');
-    processingEl.textContent = 'Обрабатываю…';
-  }
-}
-
-// Scoring runs in the background on the server (can take 60+ seconds), so the
-// result is fetched by polling rather than waiting on one long HTTP request —
-// that long a request is exactly what got killed by a mobile network mid-flight
-// in production. Each poll is fast; transient network blips just retry a few
-// times before giving up for good.
-async function pollScore() {
-  let networkRetries = 0;
-  while (true) {
-    let data;
-    try {
-      data = await fetchJson(`/sessions/${sessionId}/score`);
-      networkRetries = 0;
-    } catch (err) {
-      networkRetries += 1;
-      if (networkRetries > 5) throw err;
-      await new Promise((r) => setTimeout(r, 3000));
-      continue;
-    }
-    if (data.status === 'finished') return data;
-    if (data.status === 'finish_error') throw new Error(data.detail || 'оценка не удалась');
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-}
-
-function renderResult(data) {
-  resultEl.style.display = 'block';
-  const totalClass = data.total <= 60 ? 'low' : 'high';
-
-  const claimsHtml = (data.claim_checks || []).map((c) => `
-    <div class="claim-row">
-      реплика ${esc(c.turn_index)}: «${esc(c.claim_text)}» —
-      <span class="verdict-${esc(c.verdict)}">${esc(c.verdict)}</span>
-      ${c.reason ? ` — ${esc(c.reason)}` : ''}
-    </div>
-  `).join('');
-
-  const breakdownHtml = (data.breakdown || []).map((b) => `
-    <div class="criterion">
-      <div class="criterion-head"><span>${esc(b.criterion_id)}</span><span>${esc(b.score)} / ${esc(b.max)}</span></div>
-      ${b.reason ? `<div class="criterion-reason">${esc(b.reason)}</div>` : ''}
-      ${b.quote ? `<div class="criterion-quote">«${esc(b.quote)}»</div>` : ''}
-    </div>
-  `).join('');
-
-  const criticalHtml = (data.critical_errors || []).length
-    ? (data.critical_errors || []).map((e) => `
-        <div class="critical-box">
-          <strong>${esc(e.type)}</strong><br/>
-          «${esc(e.quote)}»<br/>
-          ${esc(e.explanation)}
-        </div>
-      `).join('')
-    : '<p>Критичных ошибок нет.</p>';
-
-  const fb = data.feedback || {};
-  const strengthsHtml = (fb.strengths || []).map((s) => `<li>${esc(s)}</li>`).join('');
-  const growthHtml = (fb.growth_areas || []).map((s) => `<li>${esc(s)}</li>`).join('');
-  const examplesHtml = (fb.better_examples || []).map((e) => `
-    <div class="better-example">
-      <div class="was">Было: «${esc(e.was)}»</div>
-      <div class="better">Лучше: «${esc(e.better)}»</div>
-    </div>
-  `).join('');
-
-  resultEl.innerHTML = `
-    <h2>Результат оценки</h2>
-    <div class="score-total ${totalClass}">${esc(data.total)} / 100</div>
-
-    <h3>Claim-verification</h3>
-    ${claimsHtml || '<p>Утверждений не найдено.</p>'}
-
-    <h3>Критерии</h3>
-    ${breakdownHtml}
-
-    <h3>Критичные ошибки</h3>
-    ${criticalHtml}
-
-    <h3>Резюме</h3>
-    <p>${esc(fb.summary)}</p>
-
-    <h3>Сильные стороны</h3>
-    <ul>${strengthsHtml || '<li>—</li>'}</ul>
-
-    <h3>Зоны роста</h3>
-    <ul>${growthHtml || '<li>—</li>'}</ul>
-
-    <h3>Как сказать лучше</h3>
-    ${examplesHtml || '<p>—</p>'}
-  `;
-}
-
-startBtn.addEventListener('click', startSession);
-finishBtn.addEventListener('click', finishSession);
-sendBtn.addEventListener('click', sendTurn);
-textInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendTurn();
-});
-micBtn.addEventListener('mousedown', startRecording);
-micBtn.addEventListener('mouseup', stopRecording);
-micBtn.addEventListener('mouseleave', stopRecording);
-micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
-micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
-
-loadScenario();
-</script>
+<script src="/static/app.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/shell.js"></script>
+<script src="/static/js/pages/training.js"></script>
 </body>
 </html>

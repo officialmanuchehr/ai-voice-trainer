@@ -6,6 +6,7 @@ import anthropic
 from app.config import settings
 from app.prompts import build_claim_verification_prompt, build_scoring_prompt
 from app.providers.base import ScoringProvider
+from app.scoring_math import breakdown_problems, canonical_verdict
 
 MAX_ATTEMPTS = 3
 MODEL = "claude-sonnet-5"
@@ -121,6 +122,11 @@ class ClaudeScoringProvider(ScoringProvider):
                 data = json.loads(_extract_json(raw))
                 if not isinstance(data, list):
                     raise ValueError("expected a JSON array")
+                for claim in data:
+                    verdict = canonical_verdict(claim.get("verdict")) if isinstance(claim, dict) else None
+                    if verdict is None:
+                        raise ValueError(f"invalid claim or verdict: {claim!r}")
+                    claim["verdict"] = verdict
                 return data
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
@@ -136,6 +142,9 @@ class ClaudeScoringProvider(ScoringProvider):
                 data = json.loads(_extract_json(raw))
                 if not isinstance(data, dict) or "breakdown" not in data:
                     raise ValueError("missing required score fields")
+                problems = breakdown_problems(data["breakdown"], rubric)
+                if problems:
+                    raise ValueError("; ".join(problems))
                 return self._finalize_total(data, claim_checks)
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc

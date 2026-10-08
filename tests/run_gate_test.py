@@ -7,7 +7,10 @@ the transcript fed into /finish is byte-identical every run. Only ScoringProvide
 non-determinism of the AI-client dialogue.
 
 Requires the app server to be running (reads DATABASE_URL from the same .env
-to write directly into transcript_turns, then calls /finish over HTTP).
+to write directly into transcript_turns, then calls /finish over HTTP), and a
+user to run as — the session is created under that user, so it must exist:
+
+    export GATE_USERNAME=... GATE_PASSWORD=...
 
 Usage:
     python3 tests/run_gate_test.py tests/fixtures/dialogue_honest.json
@@ -17,6 +20,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,7 +37,7 @@ from app.models import TranscriptTurn  # noqa: E402
 API_BASE = "http://127.0.0.1:8000"
 
 
-async def seed_session_from_fixture(fixture: dict) -> str:
+async def seed_session_from_fixture(fixture: dict, user_id: str) -> str:
     """Creates a session bound to the fixture's scenario/kb_version and writes
     the fixture's transcript straight into transcript_turns. DialogProvider is
     never imported or called anywhere in this path."""
@@ -55,6 +59,8 @@ async def seed_session_from_fixture(fixture: dict) -> str:
             scenario_id=scenario.id,
             kb_version=kb.version,
             rubric_id=fixture["rubric_id"],
+            user_id=user_id,
+            scenario_version=1,
             status="active",
         )
         db.add(session)
@@ -82,15 +88,32 @@ async def main() -> None:
 
     fixture = json.loads(Path(args.fixture_path).read_text(encoding="utf-8"))
 
-    session_id = await seed_session_from_fixture(fixture)
-    print(f"session seeded from fixture (no DialogProvider calls): {session_id}", flush=True)
-    print(f"transcript turns written: {len(fixture['transcript'])}", flush=True)
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=300) as client:
+        resp = await client.post(
+            "/auth/login",
+            json={"username": os.environ.get("GATE_USERNAME", ""), "password": os.environ.get("GATE_PASSWORD", "")},
+        )
+        if resp.status_code != 200:
+            raise SystemExit("login failed — set GATE_USERNAME / GATE_PASSWORD to an existing user")
+        user_id = resp.json()["id"]
 
-    print("calling /finish ...", flush=True)
-    async with httpx.AsyncClient(timeout=180) as client:
-        resp = await client.post(f"{API_BASE}/sessions/{session_id}/finish")
+        session_id = await seed_session_from_fixture(fixture, user_id)
+        print(f"session seeded from fixture (no DialogProvider calls): {session_id}", flush=True)
+        print(f"transcript turns written: {len(fixture['transcript'])}", flush=True)
+
+        print("calling /finish + /score-run ...", flush=True)
+        resp = await client.post(f"/sessions/{session_id}/finish")
+        resp.raise_for_status()
+        # Scoring is a separate synchronous call now (see app/main.py): /finish
+        # only flips the session to "scoring". /score-run runs the Claude calls
+        # and returns when done; the full result is then read from /score.
+        resp = await client.post(f"/sessions/{session_id}/score-run")
+        resp.raise_for_status()
+        resp = await client.get(f"/sessions/{session_id}/score")
         resp.raise_for_status()
         result = resp.json()
+        if result.get("status") == "finish_error":
+            raise SystemExit(f"scoring failed: {result.get('detail')}")
 
     print(f"total: {result['total']}", flush=True)
     print(f"critical_errors: {len(result.get('critical_errors', []))}", flush=True)

@@ -5,3 +5,5 @@ __pycache__/
 data/*.db
 .claude/
 .DS_Store
+.vercel
+.env*

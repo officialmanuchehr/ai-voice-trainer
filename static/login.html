@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Вход — AI Voice Trainer</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/static/css/app.css" />
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<main class="auth-page">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg>
+      </span>
+      <span><span class="brand-name">AI Voice Trainer</span><br/><span class="brand-sub">Тренажёр продаж и комплаенса</span></span>
+    </div>
+    <form id="login-form">
+      <h1>Вход</h1>
+      <p class="lead small">Войдите под своей учётной записью.</p>
+      <label class="field">Логин<input type="text" id="username" autocomplete="username" required /></label>
+      <label class="field">Пароль<input type="password" id="password" autocomplete="current-password" required /></label>
+      <p id="error" class="error-box hidden" role="alert" aria-live="assertive"></p>
+      <button type="submit" class="w-full mt-2" id="login-btn">Войти</button>
+    </form>
+  </div>
+  <div class="auth-footer" id="theme-row"></div>
+</main>
+<script src="/static/app.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/pages/login.js"></script>
+</body>
+</html>

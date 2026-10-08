@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Контент — AI Voice Trainer</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/static/css/app.css" />
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
+<div class="app-shell" id="app-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Основная навигация"></aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="app-main">
+    <header class="app-header">
+      <button type="button" class="ghost icon-button menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Открыть меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="app-header-titles">
+        <h1 id="page-title">Контент</h1>
+        <p class="page-subtitle" id="page-subtitle"></p>
+      </div>
+      <div class="app-header-actions" id="page-actions"></div>
+    </header>
+
+    <main id="main" class="app-content" tabindex="-1">
+      <div class="page">
+
+        <section id="tab-scenarios" class="hidden">
+          <div class="panel" id="scenario-list">
+            <div class="section-head"><h2>Все сценарии</h2><span class="spacer"></span><button type="button" id="new-scenario" class="hidden">+ Новый сценарий</button></div>
+            <p class="section-note">Порядок: черновик → утверждено (продукт / комплаенс) → опубликовано (обучение). Утверждённые и опубликованные версии не редактируются — правка создаёт новую версию-черновик, опубликованная продолжает работать.</p>
+            <div class="table-wrap"><table id="scenario-table" class="stack-table"></table></div>
+          </div>
+          <div id="scenario-editor" class="hidden stack"></div>
+        </section>
+
+        <section id="tab-kb" class="hidden">
+          <div class="panel" id="kb-list">
+            <div class="section-head"><h2>Продукты и версии</h2><span class="spacer"></span><button type="button" id="new-product" class="hidden">+ Новый продукт</button></div>
+            <p class="section-note">Порядок: черновик (продукт / комплаенс) → утверждено (комплаенс) → опубликовано (продукт). Новые тренировки используют опубликованную версию; прошедшие остаются привязаны к своей. Версии с пометками «требует проверки» нельзя утвердить или опубликовать.</p>
+            <div class="table-wrap"><table id="kb-table" class="stack-table"></table></div>
+          </div>
+          <div id="kb-editor" class="hidden stack"></div>
+        </section>
+
+        <section id="tab-users" class="hidden">
+          <div class="grid users-grid">
+            <div class="panel">
+              <h2>Пользователи</h2>
+              <div class="form-grid filters" role="search">
+                <div class="field"><label for="u-search">Поиск по логину или ФИО</label><input type="search" id="u-search" autocomplete="off" /></div>
+                <div class="field"><label for="u-filter-role">Роль</label><select id="u-filter-role"><option value="">Все роли</option></select></div>
+                <div class="field"><label for="u-filter-team">Команда</label><select id="u-filter-team"><option value="">Все команды</option><option value="none">Без команды</option></select></div>
+                <div class="field"><label for="u-filter-active">Статус</label><select id="u-filter-active"><option value="">Все</option><option value="active">Активные</option><option value="inactive">Отключённые</option></select></div>
+              </div>
+              <p class="muted small m-0" id="user-count" role="status"></p>
+              <div class="table-wrap"><table id="user-table" class="stack-table"></table></div>
+            </div>
+            <div class="stack">
+              <form class="panel" id="user-form">
+                <h2 id="user-form-title">Новый пользователь</h2>
+                <input type="hidden" id="u-id" />
+                <div class="field"><label for="u-username">Логин</label><input type="text" id="u-username" required autocomplete="off" /></div>
+                <div class="field"><label for="u-fullname">ФИО</label><input type="text" id="u-fullname" /></div>
+                <div class="field"><label for="u-role">Роль</label><select id="u-role"></select></div>
+                <div class="field"><label for="u-team">Команда</label><select id="u-team"><option value="">—</option></select></div>
+                <div class="field"><label for="u-password">Пароль</label><input type="password" id="u-password" placeholder="мин. 8 символов" autocomplete="new-password" />
+                  <div class="field-help" id="u-password-help">Пароль задаёт администратор; после сохранения он нигде не показывается.</div></div>
+                <label class="checkbox-row" id="u-active-wrap" for="u-active"><input type="checkbox" id="u-active" checked /> Активен (может входить)</label>
+                <div class="row mt-3"><button type="submit">Сохранить</button><button type="button" class="secondary" id="u-reset">Очистить</button></div>
+                <p id="user-msg" class="small mt-2" role="status"></p>
+              </form>
+              <form class="panel" id="team-form">
+                <h2>Команды</h2>
+                <p class="muted small">Состав команды задаётся у пользователя. Руководитель видит менеджеров своей <b>текущей</b> команды — вместе с их прошлыми тренировками.</p>
+                <div id="team-list" class="small"></div>
+                <div class="row mt-2"><label class="sr-only" for="team-name">Название команды</label><input type="text" id="team-name" class="flex-1" placeholder="Название новой команды" required /><button type="submit">Добавить</button></div>
+                <p id="team-msg" class="small mt-2" role="status"></p>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-audit" class="hidden">
+          <div class="panel">
+            <h2>События</h2>
+            <form class="form-grid filters" id="audit-form" role="search">
+              <div class="field"><label for="audit-filter">Тип объекта</label>
+                <select id="audit-filter"><option value="">Все</option><option value="session">Тренировки</option><option value="scenario">Сценарии</option><option value="knowledge_base">База знаний</option><option value="user">Пользователи</option><option value="team">Команды</option></select></div>
+              <div class="field"><label for="audit-action">Действие</label><select id="audit-action"><option value="">Все действия</option></select></div>
+              <div class="field"><label for="audit-actor">Кто (логин или его часть)</label><input type="search" id="audit-actor" autocomplete="off" /></div>
+              <div class="field"><span class="field-label">&nbsp;</span><button type="submit" class="secondary">Показать</button></div>
+            </form>
+            <p class="muted small m-0">Показаны последние 300 событий по фильтру. Пароли, тексты разговоров и содержимое контента в журнал не пишутся.</p>
+            <div class="table-wrap"><table id="audit-table" class="stack-table"></table></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlg-title"><div id="dlg-body"></div></dialog>
+<div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/shell.js"></script>
+<script src="/static/js/content-model.js"></script>
+<script src="/static/js/content-editor.js"></script>
+<script src="/static/js/scenario-editor.js"></script>
+<script src="/static/js/kb-editor.js"></script>
+<script src="/static/js/pages/admin.js"></script>
+</body>
+</html>

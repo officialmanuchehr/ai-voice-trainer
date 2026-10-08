@@ -1,0 +1,40 @@
+# Regression gate (A2-6): runs the full test suite on every push and pull
+# request. Tests use temporary SQLite and stub AI providers — no secrets, no
+# network calls to AI services, no deployment. Node is installed so the
+# frontend checks that execute the real JS (vm) run instead of being skipped.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        env:
+          # Belt and braces: the tests set their own SQLite database and stub
+          # providers; nothing here may point at a real service.
+          STT_PROVIDER: stub
+          DIALOG_PROVIDER: stub
+          SCORING_PROVIDER: stub
+          TTS_PROVIDER: stub
+        run: python -m pytest -q

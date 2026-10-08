@@ -1,0 +1,415 @@
+"""Dashboard aggregates (PRD §11). Computed in Python over the period's rows —
+fine at pilot scale (hundreds of sessions); move to SQL aggregates if it grows.
+
+Results are informational only: nothing here feeds a manager's KPI (PRD §11).
+There are deliberately no business thresholds or classifications ("needs
+help", risk levels, rankings): the views show facts, people draw conclusions.
+"""
+
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import ClaimCheck, Feedback, Product, Scenario, ScenarioVersion, Score, TranscriptTurn, User
+from app.models import Session as SessionModel
+from app.seed_loader import list_rubrics
+
+def _aware(dt: datetime | None) -> datetime | None:
+    # SQLite hands back naive datetimes even for timezone=True columns.
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _avg(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def criterion_names() -> dict[str, str]:
+    return {c["id"]: c["name"] for r in list_rubrics() for c in r["criteria"]}
+
+
+async def _scenario_versions(db: AsyncSession) -> dict[tuple[str, int], dict]:
+    rows = (await db.execute(select(ScenarioVersion.scenario_id, ScenarioVersion.version, ScenarioVersion.data))).all()
+    return {(sid, v): data or {} for sid, v, data in rows}
+
+
+def bound_scenario(session: SessionModel, versions: dict[tuple[str, int], dict], scenarios: dict[str, Scenario]) -> dict:
+    """Title, product and difficulty of the scenario version the session was
+    bound to — never the scenario's current version, so publishing a new
+    version can't reclassify history. The current scenario row is only a
+    fallback for a session whose version record doesn't exist."""
+    data = versions.get((session.scenario_id, session.scenario_version or 1))
+    if data:
+        return {"title": data.get("title") or session.scenario_id, "product_id": data.get("product_id"), "difficulty": data.get("difficulty")}
+    scenario = scenarios.get(session.scenario_id)
+    return {
+        "title": (scenario.title if scenario else None) or session.scenario_id,
+        "product_id": scenario.product_id if scenario else None,
+        "difficulty": scenario.difficulty if scenario else None,
+    }
+
+
+async def session_rows(db: AsyncSession, user_ids: list[str]) -> list[dict]:
+    """Session history for the given users, newest first (manager's own history
+    and a lead's drill-down into one manager)."""
+    sessions = (
+        await db.execute(
+            select(SessionModel).where(SessionModel.user_id.in_(user_ids)).order_by(SessionModel.started_at.desc())
+        )
+    ).scalars().all()
+    ids = [s.id for s in sessions]
+    scores = {sc.session_id: sc for sc in (await db.execute(select(Score).where(Score.session_id.in_(ids)))).scalars()}
+    scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
+    products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
+    versions = await _scenario_versions(db)
+    rows = []
+    for s in sessions:
+        scenario = scenarios.get(s.scenario_id)
+        bound = bound_scenario(s, versions, scenarios)
+        score = scores.get(s.id)
+        rows.append(
+            {
+                "id": s.id,
+                "scenario_id": s.scenario_id,
+                "scenario_version": s.scenario_version or 1,
+                "title": bound["title"],
+                "product_id": bound["product_id"],
+                "product_name": products.get(bound["product_id"]),
+                "difficulty": bound["difficulty"],
+                "kb_version": s.kb_version,
+                "status": s.status,
+                "started_at": _aware(s.started_at).isoformat(),
+                "total": score.total if score else None,
+                "critical_errors": len(score.critical_errors) if score else 0,
+                "disputed": bool(score and score.disputed_at),
+                "scenario_available": bool(scenario and scenario.published_version),
+            }
+        )
+    return rows
+
+
+def _criterion_order() -> dict[str, int]:
+    order: dict[str, int] = {}
+    for rubric in list_rubrics():
+        for criterion in rubric["criteria"]:
+            order.setdefault(criterion["id"], len(order))
+    return order
+
+
+def summarize_criteria(breakdowns) -> dict:
+    """The one criterion rule shared by personal progress, the team view and
+    each manager's row. Per scored session: clamp(score, 0, max) / max (first
+    entry per criterion); per criterion: mean over sessions. Sorted weakest
+    first on the unrounded mean; ties go to the earlier rubric criterion.
+    Strongest is None with fewer than 2 criteria."""
+    names, order = criterion_names(), _criterion_order()
+    ratios: dict[str, list[float]] = defaultdict(list)
+    for breakdown in breakdowns:
+        seen = set()
+        for item in breakdown or []:
+            cid, maximum = item.get("criterion_id"), item.get("max") or 0
+            if cid in seen or maximum <= 0:
+                continue
+            seen.add(cid)
+            ratios[cid].append(min(max(item.get("score", 0), 0), maximum) / maximum)
+    rank = lambda cid: order.get(cid, len(order))  # noqa: E731
+    means = {cid: sum(v) / len(v) for cid, v in ratios.items()}
+    ordered = sorted(means, key=lambda cid: (means[cid], rank(cid)))
+    criteria = [{"criterion_id": cid, "name": names.get(cid, cid), "avg_pct": round(means[cid] * 100), "samples": len(ratios[cid])} for cid in ordered]
+    strongest = max(means, key=lambda cid: (means[cid], -rank(cid))) if len(means) > 1 else None
+    pick = lambda cid: next({k: c[k] for k in ("criterion_id", "name", "avg_pct")} for c in criteria if c["criterion_id"] == cid) if cid else None  # noqa: E731
+    return {"criteria": criteria, "weakest": pick(ordered[0] if ordered else None), "strongest": pick(strongest)}
+
+
+async def build_dashboard(
+    db: AsyncSession,
+    viewer: User,
+    days: int | None,
+    product_id: str | None,
+    team_id: int | None,
+    named: bool,
+) -> dict:
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days) if days else None
+
+    manager_query = select(User).where(User.role == "manager", User.is_active.is_(True))
+    if team_id is not None:
+        manager_query = manager_query.where(User.team_id == team_id)
+    managers = (await db.execute(manager_query)).scalars().all()
+    all_users = {u.id: u for u in (await db.execute(select(User))).scalars()}
+
+    # Management analytics describe manager training: other roles' own
+    # practice sessions (leads, trainers, admins …) are never counted.
+    session_query = select(SessionModel)
+    if team_id is not None:
+        session_query = session_query.where(SessionModel.user_id.in_([m.id for m in managers]))
+    else:
+        session_query = session_query.where(SessionModel.user_id.in_(select(User.id).where(User.role == "manager")))
+    scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
+    products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
+    versions = await _scenario_versions(db)
+
+    sessions = []
+    for s in (await db.execute(session_query)).scalars():
+        started = _aware(s.started_at)
+        if since and started < since:
+            continue
+        pid = bound_scenario(s, versions, scenarios)["product_id"]  # the session's bound version
+        if product_id and pid != product_id:
+            continue
+        sessions.append((s, started, pid))
+
+    ids = [s.id for s, _, _ in sessions]
+    scores = {sc.session_id: sc for sc in (await db.execute(select(Score).where(Score.session_id.in_(ids)))).scalars()}
+    verdicts = Counter((await db.execute(select(ClaimCheck.verdict).where(ClaimCheck.session_id.in_(ids)))).scalars())
+    latencies = list(
+        (
+            await db.execute(
+                select(TranscriptTurn.latency_ms).where(
+                    TranscriptTurn.session_id.in_(ids), TranscriptTurn.latency_ms.is_not(None)
+                )
+            )
+        ).scalars()
+    )
+
+    # Scored = finished with a stored Score (same rule as personal progress).
+    scored = [(s, started, pid, scores[s.id]) for s, started, pid in sessions if s.status == "finished" and s.id in scores]
+
+    # Skills: the shared normalised criterion rule (summarize_criteria).
+    team_skills = summarize_criteria(score.breakdown for *_, score in scored)
+    skills = team_skills["criteria"]
+
+    # Weekly trend (weeks start on Monday).
+    weekly: dict[str, list[int]] = defaultdict(list)
+    weekly_count: Counter = Counter()
+    for s, started, _, *rest in sessions:
+        week = (started - timedelta(days=started.weekday())).date().isoformat()
+        weekly_count[week] += 1
+    for s, started, _, score in scored:
+        week = (started - timedelta(days=started.weekday())).date().isoformat()
+        weekly[week].append(score.total)
+    trend = [
+        {"week_start": w, "sessions": weekly_count[w], "avg_score": _avg(weekly.get(w, []))} for w in sorted(weekly_count)
+    ]
+
+    # Products.
+    per_product: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "scores": [], "critical": 0})
+    for s, _, pid, *_ in sessions:
+        per_product[pid]["sessions"] += 1
+    for s, _, pid, score in scored:
+        per_product[pid]["scores"].append(score.total)
+        per_product[pid]["critical"] += 1 if score.critical_errors else 0
+    product_rows = sorted(
+        (
+            {
+                "product_id": pid,
+                "name": products.get(pid, pid),
+                "sessions": d["sessions"],
+                "scored": len(d["scores"]),
+                "avg_score": _avg(d["scores"]),
+                "critical_rate": round(d["critical"] / len(d["scores"]) * 100) if d["scores"] else None,
+                "sessions_with_critical_errors": d["critical"],
+            }
+            for pid, d in per_product.items()
+        ),
+        key=lambda x: (x["avg_score"] is None, x["avg_score"] or 0),
+    )
+
+    # Risks.
+    error_types = Counter(e.get("type") for *_, score in scored for e in (score.critical_errors or []))
+    critical_sessions = sum(1 for *_, score in scored if score.critical_errors)
+
+    # Managers (named views only): factual indicators per manager, ordered
+    # alphabetically — no classification, threshold or ranking.
+    manager_rows = []
+    if named:
+        by_user: dict[str, list] = defaultdict(list)
+        for s, started, pid, score in scored:
+            by_user[s.user_id].append((started, s.id, score))
+        started_by_user = Counter(s.user_id for s, *_ in sessions)
+        last_activity: dict[str, datetime] = {}
+        for s, started, *_ in sessions:
+            if s.user_id and (s.user_id not in last_activity or started > last_activity[s.user_id]):
+                last_activity[s.user_id] = started
+        for m in managers:
+            history = sorted(by_user.get(m.id, []), key=lambda x: (x[0], x[1]))
+            totals = [sc.total for *_, sc in history]
+            latest = history[-1] if history else None
+            manager_rows.append(
+                {
+                    "user_id": m.id,
+                    "full_name": m.full_name or m.username,
+                    "sessions": started_by_user.get(m.id, 0),
+                    "scored": len(totals),
+                    "avg_score": _avg(totals),
+                    "first_score": totals[0] if totals else None,
+                    "last_score": totals[-1] if totals else None,
+                    "last_session_at": latest[0].isoformat() if latest else None,
+                    "last_activity_at": last_activity[m.id].isoformat() if m.id in last_activity else None,
+                    "critical_errors": sum(len(sc.critical_errors or []) for *_, sc in history),
+                    "sessions_with_critical_errors": sum(1 for *_, sc in history if sc.critical_errors),
+                    "latest_has_critical_error": bool(latest and latest[2].critical_errors),
+                    "weakest_skill": summarize_criteria(sc.breakdown for *_, sc in history)["weakest"],
+                }
+            )
+        manager_rows.sort(key=lambda r: (r["full_name"].casefold(), r["user_id"]))
+
+        # Recent activity: the latest sessions in scope (any status), with the
+        # bound version's title/product/difficulty (session_rows).
+        in_scope = {s.id for s, *_ in sessions}
+        rows = [r for r in await session_rows(db, [m.id for m in managers]) if r["id"] in in_scope]
+        names_by_id = {m.id: m.full_name or m.username for m in managers}
+        owner = {s.id: s.user_id for s, *_ in sessions}
+        recent_sessions = [{**r, "user_id": owner[r["id"]], "full_name": names_by_id.get(owner[r["id"]])} for r in rows[:10]]
+    else:
+        recent_sessions = []
+
+    disputes = [
+        {
+            "session_id": s.id,
+            "full_name": (all_users[s.user_id].full_name or all_users[s.user_id].username)
+            if named and s.user_id in all_users
+            else None,
+            "total": score.total,
+            "comment": score.dispute_comment,
+            "at": _aware(score.disputed_at).isoformat(),
+        }
+        for s, _, _, score in scored
+        if score.disputed_at
+    ]
+
+    finished = len(scored)
+    return {
+        "generated_at": now.isoformat(),
+        "period_days": days,
+        "named": named,
+        "kpi": {
+            "sessions_started": len(sessions),
+            "sessions_scored": finished,
+            "completion_rate": round(finished / len(sessions) * 100) if sessions else None,
+            "active_managers": len({s.user_id for s, *_ in sessions if s.user_id}),
+            "total_managers": len(managers),
+            "avg_score": _avg([score.total for *_, score in scored]),
+            "critical_errors": sum(len(score.critical_errors or []) for *_, score in scored),
+            "sessions_with_critical_errors": critical_sessions,
+            "managers_trained": len({s.user_id for s, *_ in scored if s.user_id}),
+            "critical_session_rate": round(critical_sessions / finished * 100) if finished else None,
+            "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else None,
+            "dispute_rate": round(len(disputes) / finished * 100) if finished else None,
+        },
+        "trend": trend,
+        "skills": skills,
+        "weakest_skill": team_skills["weakest"],
+        "products": product_rows,
+        "risks": {
+            "by_type": [{"type": t, "count": c} for t, c in error_types.most_common()],
+            "claims": {v: verdicts.get(v, 0) for v in ("approved", "unapproved", "forbidden")},
+        },
+        "managers": manager_rows,
+        "recent_sessions": recent_sessions,
+        "disputes": disputes if named or viewer.role == "training" else [],
+    }
+
+
+# ------------------------------------------------------- personal progress
+
+
+async def build_progress(db: AsyncSession, user_id: str) -> dict:
+    """One trainee's own progress (GET /me/progress). Read-only, computed from
+    stored data only; the caller's id comes from the session cookie.
+
+    Rules:
+    - Included: the user's sessions with status "finished" and a stored Score.
+      Active, scoring and failed sessions are only counted in `sessions`.
+    - Scores are the stored FINAL totals (a capped 60 stays 60).
+    - Order/recency: started_at, then session id (deterministic).
+    - Criterion value per session = clamp(score, 0, max) / max (first entry
+      per criterion); per criterion = mean over sessions; compared unrounded.
+      Weakest/strongest ties: earlier rubric criterion wins.
+    - Product: the session's bound scenario version.
+    - Claim verdicts through the backend's fail-closed mapping.
+    - next_skill: evaluator feedback of the latest included session that has one.
+    Averages are rounded to 1 decimal, percentages to whole numbers.
+    """
+    from app.scoring_math import fail_closed_verdict
+
+    sessions = (await db.execute(select(SessionModel).where(SessionModel.user_id == user_id))).scalars().all()
+    status_counts = Counter(s.status for s in sessions)
+    ids = [s.id for s in sessions]
+    scores = {sc.session_id: sc for sc in (await db.execute(select(Score).where(Score.session_id.in_(ids)))).scalars()}
+    included = sorted(
+        (s for s in sessions if s.status == "finished" and s.id in scores),
+        key=lambda s: (_aware(s.started_at), s.id),
+    )
+    included_ids = [s.id for s in included]
+    feedback = {f.session_id: f for f in (await db.execute(select(Feedback).where(Feedback.session_id.in_(included_ids)))).scalars()}
+    claim_rows = (await db.execute(select(ClaimCheck.verdict).where(ClaimCheck.session_id.in_(included_ids)))).scalars().all()
+    scenarios = {s.id: s for s in (await db.execute(select(Scenario))).scalars()}
+    products = {p.id: p.name for p in (await db.execute(select(Product))).scalars()}
+    versions = await _scenario_versions(db)
+
+    trend, product_scores, product_critical = [], defaultdict(list), Counter()
+    critical_total = sessions_with_critical = 0
+    for s in included:
+        score = scores[s.id]
+        bound = bound_scenario(s, versions, scenarios)
+        errors = len(score.critical_errors or [])
+        critical_total += errors
+        sessions_with_critical += bool(errors)
+        trend.append(
+            {
+                "session_id": s.id,
+                "started_at": _aware(s.started_at).isoformat(),
+                "total": score.total,
+                "title": bound["title"],
+                "product_id": bound["product_id"],
+                "critical_errors": errors,
+            }
+        )
+        product_scores[bound["product_id"]].append(score.total)
+        product_critical[bound["product_id"]] += bool(errors)
+
+    summary = summarize_criteria(scores[s.id].breakdown for s in included)
+
+    verdicts = Counter(fail_closed_verdict(v) for v in claim_rows)
+    latest_with_skill = next((s for s in reversed(included) if feedback.get(s.id) and feedback[s.id].next_skill), None)
+    totals = [scores[s.id].total for s in included]
+    return {
+        "sessions": {
+            "scored": len(included),
+            "in_progress": status_counts.get("active", 0),
+            "scoring": status_counts.get("scoring", 0),
+            "scoring_failed": status_counts.get("finish_error", 0),
+        },
+        "summary": {
+            "average_score": _avg(totals),
+            "latest_score": totals[-1] if totals else None,
+            "latest_at": trend[-1]["started_at"] if trend else None,
+            "first_score": totals[0] if totals else None,
+        },
+        "score_trend": trend,
+        "criteria": summary["criteria"],
+        "weakest_criterion": summary["weakest"],
+        "strongest_criterion": summary["strongest"],
+        "products": sorted(
+            (
+                {"product_id": pid, "name": products.get(pid, pid), "sessions": len(v), "avg_score": _avg(v), "sessions_with_critical_errors": product_critical[pid]}
+                for pid, v in product_scores.items()
+            ),
+            key=lambda p: (p["avg_score"], p["name"] or ""),
+        ),
+        "compliance": {
+            "critical_errors": critical_total,
+            "sessions_with_critical_errors": sessions_with_critical,
+            "claims": {verdict: verdicts.get(verdict, 0) for verdict in ("approved", "unapproved", "forbidden")},
+        },
+        "next_skill": {
+            "source": "evaluator_feedback",
+            "text": feedback[latest_with_skill.id].next_skill,
+            "session_id": latest_with_skill.id,
+            "started_at": _aware(latest_with_skill.started_at).isoformat(),
+        } if latest_with_skill else None,
+    }
