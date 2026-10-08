@@ -3,7 +3,8 @@
 Stateless signed cookie (no server-side session table) so it works unchanged
 on serverless, where each request may hit a fresh worker. The user row is
 still re-read on every request, so deactivating a user or changing their role
-takes effect immediately.
+takes effect immediately. Cookies carry a session revision; password resets
+increment it to revoke all previously issued cookies.
 """
 
 import hashlib
@@ -86,32 +87,39 @@ def _sign(payload: str) -> str:
     return hmac.new(_secret(), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def make_token(user_id: str) -> str:
+def make_token(user_id: str, session_revision: int = 0) -> str:
     expires = int(time.time()) + settings.session_ttl_hours * 3600
-    payload = f"{user_id}.{expires}"
+    payload = f"{user_id}.{expires}.{session_revision}"
     return f"{payload}.{_sign(payload)}"
 
 
-def read_token(token: str) -> str | None:
+def read_token(token: str) -> tuple[str, int] | None:
     try:
-        user_id, expires, signature = token.split(".")
-    except ValueError:
+        parts = token.split(".")
+        if len(parts) == 3:  # pre-migration cookies belong to revision zero
+            user_id, expires, signature = parts
+            revision = 0
+        else:
+            user_id, expires, raw_revision, signature = parts
+            revision = int(raw_revision)
+        payload = ".".join(parts[:-1])
+        if not hmac.compare_digest(signature, _sign(payload)):
+            return None
+        if int(expires) < time.time():
+            return None
+    except (ValueError, TypeError):
         return None
-    if not hmac.compare_digest(signature, _sign(f"{user_id}.{expires}")):
-        return None
-    if int(expires) < time.time():
-        return None
-    return user_id
+    return user_id, revision
 
 
 async def get_current_user(request: Request) -> User:
     token = request.cookies.get(COOKIE_NAME)
-    user_id = read_token(token) if token else None
-    if user_id is None:
+    identity = read_token(token) if token else None
+    if identity is None:
         raise HTTPException(status_code=401, detail="не выполнен вход")
     async with SessionLocal() as db:
-        user = await db.get(User, user_id)
-    if user is None or not user.is_active:
+        user = await db.get(User, identity[0])
+    if user is None or not user.is_active or user.session_revision != identity[1]:
         raise HTTPException(status_code=401, detail="пользователь не найден или отключён")
     return user
 

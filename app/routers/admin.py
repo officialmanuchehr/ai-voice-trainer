@@ -7,12 +7,14 @@ new draft version, so every session stays tied to the exact content it ran on.
 
 import re
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.audit import audit
 from app.content import (
@@ -63,6 +65,23 @@ _content_viewer = require_roles(*CONTENT_VIEW_ROLES)
 _admin = require_roles("admin")
 
 
+@asynccontextmanager
+async def _content_db():
+    async with SessionLocal() as db:
+        try:
+            yield db
+        except StaleDataError:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Версия изменена другим пользователем — откройте её заново")
+
+
+def _check_revision(v, revision: int | None) -> None:
+    # Older API clients may omit this; the ORM still compares the revision
+    # read by this request atomically at flush. Editors send the reviewed revision.
+    if revision is not None and revision != v.revision:
+        raise HTTPException(status_code=409, detail="Версия изменена другим пользователем — откройте её заново")
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -110,6 +129,7 @@ async def meta(user: User = Depends(_content_viewer)):
 def _version_meta(v: ScenarioVersion | KnowledgeBase) -> dict:
     return {
         "version": v.version,
+        "revision": v.revision,
         "status": v.status,
         "author": v.author,
         "created_at": _iso(v.created_at),
@@ -171,6 +191,7 @@ class ScenarioBody(BaseModel):
     # The version the editor started from. When given and a newer draft
     # exists, the edit is refused instead of silently replacing that draft.
     base_version: int | None = None
+    revision: int | None = None
 
 
 @router.post("/scenarios")
@@ -203,7 +224,7 @@ async def edit_scenario(scenario_id: str, body: ScenarioBody, user: User = Depen
     """Edits the latest version if it is still a draft; otherwise starts a new
     draft version. The published version keeps serving managers meanwhile."""
     check_document(body.data, MAX_SCENARIO_BYTES, "Сценарий")
-    async with SessionLocal() as db:
+    async with _content_db() as db:
         if await db.get(Scenario, scenario_id) is None:
             raise HTTPException(status_code=404, detail="сценарий не найден")
         content = validate_scenario_content(body.data, await _product_ids(db))
@@ -222,6 +243,8 @@ async def edit_scenario(scenario_id: str, body: ScenarioBody, user: User = Depen
                 status_code=409,
                 detail=f"уже есть черновик v{latest.version} — откройте его, чтобы не потерять изменения",
             )
+        if latest is not None and body.base_version == latest.version:
+            _check_revision(latest, body.revision)
         if latest is not None and latest.status == "draft":
             latest.data = content
             latest.author = user.username
@@ -239,6 +262,7 @@ async def edit_scenario(scenario_id: str, body: ScenarioBody, user: User = Depen
 
 class StatusBody(BaseModel):
     status: str
+    revision: int | None = None
 
 
 def _review_conflict(code: str, detail: str, blockers: list[dict]) -> JSONResponse:
@@ -249,9 +273,10 @@ def _review_conflict(code: str, detail: str, blockers: list[dict]) -> JSONRespon
 
 @router.post("/scenarios/{scenario_id}/versions/{version}/status")
 async def set_scenario_status(scenario_id: str, version: int, body: StatusBody, user: User = Depends(_content_viewer)):
-    async with SessionLocal() as db:
+    async with _content_db() as db:
         scenario = await db.get(Scenario, scenario_id)
         v = await _scenario_version(db, scenario_id, version)
+        _check_revision(v, body.revision)
         previous = v.status
         require_transition(user, v, body.status)
         if body.status == "published":
@@ -382,6 +407,7 @@ async def create_kb_version(product_id: str, body: NewKbVersion, user: User = De
 
 class KbEdit(BaseModel):
     data: dict
+    revision: int | None = None
     notes: str | None = None
 
 
@@ -389,8 +415,9 @@ class KbEdit(BaseModel):
 async def edit_kb_version(product_id: str, version: str, body: KbEdit, user: User = Depends(require_roles(*KB_EDIT_ROLES))):
     check_document(body.data, MAX_KB_BYTES, "База знаний")
     check_chars(body.notes, MAX_NOTES_CHARS, "Комментарий к версии")
-    async with SessionLocal() as db:
+    async with _content_db() as db:
         kb = await _kb_version(db, product_id, version)
+        _check_revision(kb, body.revision)
         if kb.status != "draft":
             raise HTTPException(status_code=409, detail="редактировать можно только черновик — создайте новую версию")
         kb.data = validate_kb_content(body.data, product_id)
@@ -405,8 +432,9 @@ async def edit_kb_version(product_id: str, version: str, body: KbEdit, user: Use
 
 @router.post("/kb/{product_id}/versions/{version}/status")
 async def set_kb_status(product_id: str, version: str, body: StatusBody, user: User = Depends(_content_viewer)):
-    async with SessionLocal() as db:
+    async with _content_db() as db:
         kb = await _kb_version(db, product_id, version)
+        _check_revision(kb, body.revision)
         previous = kb.status
         require_transition(user, kb, body.status)
         if body.status in ("approved", "published"):
@@ -579,6 +607,8 @@ async def edit_user(user_id: str, body: EditUser, user: User = Depends(_admin)):
         target.is_active = body.is_active
         if password:
             target.password_hash = hash_password(password)
+            # SQL expression prevents concurrent resets from losing an increment.
+            target.session_revision = User.session_revision + 1
             changes["password"] = "reset"
         audit(db, user, "user.edit", "user", target.id, {"username": target.username, **changes})
         await db.commit()

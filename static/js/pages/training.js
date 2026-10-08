@@ -341,15 +341,20 @@ async function finishSession() {
   try {
     // Check current status first so a retry after a dropped connection resumes
     // polling instead of re-POSTing /finish onto a scoring job already in flight.
-    let current = null;
-    try { current = await api(`/sessions/${sessionId}/score`); } catch { /* fall through */ }
-    if (!current || current.status !== 'scoring') {
-      await api(`/sessions/${sessionId}/finish`, { method: 'POST' });
+    const current = await api(`/sessions/${sessionId}/score`);
+    let data;
+    if (current.status === 'finished') {
+      data = current;
+    } else {
+      if (current.status === 'active' || current.status === 'finish_error') {
+        await api(`/sessions/${sessionId}/finish`, { method: 'POST' });
+      } else if (current.status !== 'scoring') {
+        throw new Error('Не удалось определить состояние оценки. Попробуйте снова.');
+      }
+      // Resume/claim scoring idempotently, then read its outcome by polling.
+      fetch(`/sessions/${sessionId}/score-run`, { method: 'POST' }).catch(() => {});
+      data = await pollScore();
     }
-    // Fire-and-forget: scoring runs server-side regardless of whether this
-    // request survives; the outcome is read by polling /score.
-    fetch(`/sessions/${sessionId}/score-run`, { method: 'POST' }).catch(() => {});
-    const data = await pollScore();
     setStep('step-analysis', 'done', '');
     setStep('step-result', 'done');
     const sid = sessionId;

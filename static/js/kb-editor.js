@@ -245,7 +245,7 @@ async function saveKb() {
     return;
   }
   try {
-    await api(`/admin/kb/${encodeURIComponent(st.productId)}/versions/${encodeURIComponent(st.version)}`, { method: 'PUT', json: { data: st.data, notes: st.notes } });
+    await api(`/admin/kb/${encodeURIComponent(st.productId)}/versions/${encodeURIComponent(st.version)}`, { method: 'PUT', json: { data: st.data, notes: st.notes, revision: st.meta.revision } });
     unsaved.set(false);
     kbUi.items = await api('/admin/kb');
     toast(`Черновик v${st.version} сохранён`, 'success');
@@ -267,7 +267,7 @@ async function changeKbStatus(target) {
   }
   if (!(await confirmTransition('kb', ctx, target))) return;
   try {
-    await api(`/admin/kb/${encodeURIComponent(st.productId)}/versions/${encodeURIComponent(st.version)}/status`, { method: 'POST', json: { status: target } });
+    await api(`/admin/kb/${encodeURIComponent(st.productId)}/versions/${encodeURIComponent(st.version)}/status`, { method: 'POST', json: { status: target, revision: st.meta.revision } });
     meta = await api('/admin/meta');
     kbUi.items = await api('/admin/kb');
     toast(`Статус изменён: ${CONTENT_STATUS_TEXT[target]}`, 'success');

@@ -236,7 +236,7 @@ async function saveScenario() {
   try {
     const res = st.mode === 'new'
       ? await api('/admin/scenarios', { method: 'POST', json: { data: st.data } })
-      : await api(`/admin/scenarios/${encodeURIComponent(st.id)}`, { method: 'PUT', json: { data: st.data, base_version: st.version } });
+      : await api(`/admin/scenarios/${encodeURIComponent(st.id)}`, { method: 'PUT', json: { data: st.data, base_version: st.version, revision: st.meta.revision } });
     unsaved.set(false);
     scenarioUi.items = await api('/admin/scenarios');
     toast(`Сохранено: черновик v${res.version}`, 'success');
@@ -288,7 +288,7 @@ async function changeScenarioStatus(target) {
   const ctx = { name: st.data.title, version: st.version, status: st.meta.status, publishedVersion: st.item.published_version };
   if (!(await confirmTransition('scenario', ctx, target))) return;
   try {
-    await api(`/admin/scenarios/${encodeURIComponent(st.id)}/versions/${encodeURIComponent(st.version)}/status`, { method: 'POST', json: { status: target } });
+    await api(`/admin/scenarios/${encodeURIComponent(st.id)}/versions/${encodeURIComponent(st.version)}/status`, { method: 'POST', json: { status: target, revision: st.meta.revision } });
     scenarioUi.items = await api('/admin/scenarios');
     toast(`Статус изменён: ${CONTENT_STATUS_TEXT[target]}`, 'success');
     await openScenario(st.id, st.version);

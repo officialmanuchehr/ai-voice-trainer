@@ -93,6 +93,9 @@ async def _call_service(code: str, call):
 # column: the one KB snapshot and scenario that existed before versioning were
 # the approved, live ones.
 _ADDITIVE_COLUMNS = [
+    ("users", "session_revision", "INTEGER NOT NULL", "0"),
+    ("knowledge_base", "revision", "INTEGER NOT NULL", "1"),
+    ("scenario_versions", "revision", "INTEGER NOT NULL", "1"),
     ("sessions", "scoring_error", "TEXT", None),
     ("sessions", "scoring_started_at", "TS", None),
     ("sessions", "user_id", "VARCHAR", None),

@@ -85,7 +85,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     response.set_cookie(
         COOKIE_NAME,
-        make_token(user.id),
+        make_token(user.id, user.session_revision),
         max_age=settings.session_ttl_hours * 3600,
         httponly=True,
         samesite="lax",

@@ -34,6 +34,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    session_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     # manager | sales_lead | training | product | compliance | admin (see app/security.py)
     role: Mapped[str] = mapped_column(String, nullable=False)
@@ -92,6 +93,11 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_base"
     __table_args__ = (UniqueConstraint("product_id", "version", name="uq_kb_product_version"),)
 
+    # SQLAlchemy includes the revision in UPDATE's WHERE clause and increments
+    # it on every mutation, protecting both content and lifecycle transitions.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision}
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[str] = mapped_column(ForeignKey("products.id"), nullable=False)
     version: Mapped[str] = mapped_column(String, nullable=False)
@@ -135,6 +141,11 @@ class ScenarioVersion(Base):
 
     __tablename__ = "scenario_versions"
     __table_args__ = (UniqueConstraint("scenario_id", "version", name="uq_scenario_version"),)
+
+    # SQLAlchemy includes the revision in UPDATE's WHERE clause and increments
+    # it on every mutation, protecting both content and lifecycle transitions.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     scenario_id: Mapped[str] = mapped_column(ForeignKey("scenarios.id"), nullable=False)
