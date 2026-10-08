@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.audit import audit
@@ -274,6 +274,10 @@ def _review_conflict(code: str, detail: str, blockers: list[dict]) -> JSONRespon
 @router.post("/scenarios/{scenario_id}/versions/{version}/status")
 async def set_scenario_status(scenario_id: str, version: int, body: StatusBody, user: User = Depends(_content_viewer)):
     async with _content_db() as db:
+        # Lock the shared parent before reading any version. An UPDATE also
+        # obtains SQLite's write lock, where SELECT FOR UPDATE is ignored.
+        if body.status in ("published", "archived"):
+            await db.execute(update(Scenario).where(Scenario.id == scenario_id).values(id=Scenario.id))
         scenario = await db.get(Scenario, scenario_id)
         v = await _scenario_version(db, scenario_id, version)
         _check_revision(v, body.revision)
@@ -433,6 +437,8 @@ async def edit_kb_version(product_id: str, version: str, body: KbEdit, user: Use
 @router.post("/kb/{product_id}/versions/{version}/status")
 async def set_kb_status(product_id: str, version: str, body: StatusBody, user: User = Depends(_content_viewer)):
     async with _content_db() as db:
+        if body.status in ("published", "archived"):
+            await db.execute(update(Product).where(Product.id == product_id).values(id=Product.id))
         kb = await _kb_version(db, product_id, version)
         _check_revision(kb, body.revision)
         previous = kb.status

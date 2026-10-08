@@ -19,7 +19,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     // product and compliance (who cannot train) on their work queue; other
     // roles keep the existing default.
     const home = { manager: '/overview', sales_lead: '/dashboard', product: '/queue', compliance: '/queue' }[user.role] || '/';
-    location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : home;
+    let destination = home;
+    if (next) {
+      try {
+        const target = new URL(next, location.origin);
+        if (target.origin === location.origin) destination = target.href;
+      } catch (_) { /* Invalid return addresses use the role's home page. */ }
+    }
+    location.href = destination;
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.classList.remove('hidden');

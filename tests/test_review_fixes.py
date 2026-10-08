@@ -133,6 +133,93 @@ def test_additive_migration_backfills_revisions_and_is_idempotent():
 NODE = shutil.which('node')
 
 
+@pytest.mark.parametrize('kind', ['kb', 'scenario'])
+def test_concurrent_first_publications_keep_one_current_version(server, monkeypatch, kind):
+    from sqlalchemy.sql.dml import Update
+
+    product = new_product(publish=kind == 'scenario')
+    admin = login('admin')
+    if kind == 'kb':
+        root = f'/admin/kb/{product}/versions'
+        versions = ['1.0.0', '2.0.0']
+        ok(admin.post(root, json={'version': versions[1], 'base_version': versions[0]}))
+        parent_table, version_table = 'products', 'knowledge_base'
+    else:
+        data = scenario_data(product)
+        sid = create_scenario(data)
+        root = f'/admin/scenarios/{sid}/versions'
+        versions = [1, 2]
+        ok(admin.post(f'{root}/1/status', json={'status': 'approved'}))
+        ok(admin.put(f'/admin/scenarios/{sid}', json={'data': {**data, 'title': 'Second version'}, 'base_version': 1}))
+        parent_table, version_table = 'scenarios', 'scenario_versions'
+    for version in versions:
+        if kind == 'scenario' and version == 1:
+            continue
+        ok(admin.post(f'{root}/{version}/status', json={'status': 'approved'}))
+
+    barrier = threading.Barrier(2)
+    original = AsyncSession.execute
+
+    async def concurrent_execute(db, statement, *args, **kwargs):
+        if isinstance(statement, Update) and statement.table.name == parent_table:
+            await asyncio.to_thread(barrier.wait, 30)
+            result = await original(db, statement, *args, **kwargs)
+            db.info['publication_parent_locked'] = True
+            return result
+        compiled = statement.compile()
+        # Without the shared parent lock, force both requests to observe the
+        # empty publication set, making the old defect deterministic.
+        if (not db.info.get('publication_parent_locked')
+                and version_table in str(statement)
+                and 'published' in compiled.params.values()):
+            result = await original(db, statement, *args, **kwargs)
+            await asyncio.to_thread(barrier.wait, 30)
+            return result
+        return await original(db, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, 'execute', concurrent_execute)
+    clients = [login('admin'), login('admin')]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(client.post, f'{root}/{version}/status', json={'status': 'published'})
+                   for client, version in zip(clients, versions)]
+        assert [f.result(timeout=60).status_code for f in futures] == [200, 200]
+    current = [ok(admin.get(f'{root}/{version}')) for version in versions]
+    assert sorted(v['status'] for v in current) == ['archived', 'published']
+    if kind == 'scenario':
+        from app.database import SessionLocal
+        from app.models import Scenario
+        async def published_pointer():
+            async with SessionLocal() as db:
+                return (await db.get(Scenario, sid)).published_version
+        published = next(version for version, v in zip(versions, current) if v['status'] == 'published')
+        assert asyncio.run(published_pointer()) == published
+
+
+@pytest.mark.skipif(NODE is None, reason='Node required to execute the real login page')
+@pytest.mark.parametrize('next_path,expected', [
+    ('/history?view=all', 'https://trainer.example/history?view=all'),
+    ('/\\attacker.example', '/overview'),
+    ('//attacker.example', '/overview'),
+    ('https://attacker.example/', '/overview'),
+    ('javascript:alert(1)', '/overview'),
+    ('http://[', '/overview'),
+    ('', '/overview'),
+])
+def test_login_return_address_stays_on_current_origin(next_path, expected):
+    path = Path(__file__).resolve().parents[1] / 'static/js/pages/login.js'
+    script = r'''
+const fs=require('fs'), vm=require('vm'), assert=require('assert');
+let submit;
+const el={value:'test',append(){},classList:{add(){},remove(){}},addEventListener(_,fn){submit=fn;}};
+const ctx={URL,URLSearchParams,document:{getElementById(){return el;}},themeSelect(){return {};},setLoading(){},
+ api:async()=>({role:'manager'}),location:{origin:'https://trainer.example',search:'?next='+encodeURIComponent(NEXT)}};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(PATH,'utf8'),ctx);
+(async()=>{await submit({preventDefault(){}});assert.strictEqual(ctx.location.href,EXPECTED);})().catch(e=>{console.error(e);process.exit(1);});
+'''
+    script = 'const NEXT=' + json.dumps(next_path) + ', EXPECTED=' + json.dumps(expected) + ', PATH=' + json.dumps(str(path)) + ';\n' + script
+    subprocess.run([NODE, '-e', script], check=True, capture_output=True, text=True, timeout=15)
+
+
 @pytest.mark.skipif(NODE is None, reason='Node required to execute the real training page')
 @pytest.mark.parametrize('status,finish_calls,poll_calls', [('finished', 0, 0), ('scoring', 0, 1), ('active', 1, 1), ('finish_error', 1, 1), ('unknown', 0, 0), ('network_error', 0, 0)])
 def test_scoring_retry_executes_real_page(status, finish_calls, poll_calls):
